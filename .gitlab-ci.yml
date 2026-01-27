@@ -17,7 +17,7 @@ stress_tests:
   stage: stress
   script:
     - pip install pandas numpy || true
-    - python IMPLEMENTATION/pcb_one_click/stress_test_causal_safety.py > stress_result.txt
+    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety.py > stress_result.txt
   artifacts:
     paths:
       - stress_result.txt
