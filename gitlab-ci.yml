@@ -13,11 +13,14 @@ functional_test:
     paths:
       - result.txt
 
-stress_tests:
+
+
+stress_causal_safety:
   stage: stress
   script:
-    - pip install pandas numpy || true
-    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety.py > stress_result.txt
+    - pip install pandas numpy
+    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety.py
   artifacts:
+    when: always
     paths:
       - stress_result.txt
