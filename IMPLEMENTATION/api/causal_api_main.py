@@ -16,6 +16,16 @@ from fastapi.responses import JSONResponse, FileResponse
 import pandas as pd
 
 # ---------------- CONFIG ----------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+
+ENGINE_PATH = os.path.join(
+    PROJECT_ROOT,
+    "IMPLEMENTATION",
+    "pcb_one_click",
+    "demo.py"
+)
+
 
 ENGINE_PATH = "IMPLEMENTATION/pcb_one_click/demo.py"
 BASE_OUT = "runs"
