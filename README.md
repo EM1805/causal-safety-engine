@@ -1,67 +1,174 @@
-# PCB — Personal Causal Blueprint
-
-PCB is a **local-first causal insight & validation engine** designed for
-**auditability, conservative epistemics, and AI governance**.
-
-## Constitutional Artifacts
-
-PCB is governed by four normative documents:
-
-- `CAUSAL_CONSTITUTION.md`
-- `INVARIANTS.md`
-- `DECISION_GATES.md`
-- `VIOLATION_PROTOCOL.md`
-
-Integrations should pin and reference these documents; they define non-negotiable causal constraints and enforcement semantics.
-
+# Causal Safety Engine  
+**Industrial-grade causal discovery and safety certification engine**
 
 ---
 
-## 👉 How to run (important)
+## Overview
 
-**You should run PCB from the IMPLEMENTATION folder.**
+**Causal Safety Engine** is an industrial-grade engine for causal discovery and **certification of reliable insights**, designed for enterprise environments, regulated AI systems, and deep-tech startups that require:
 
-The `CANONICAL/` directory is a **reference artifact**:
-- it defines the *correct, auditable behavior*
-- it is **not** the entry point for demos
-- you do **not** need to run anything inside it
+- causality (not correlation)
+- robustness
+- multi-run stability
+- auditability
+- API-based integration
 
-### Quick start (recommended)
+The system is designed as a **causal safety layer** on top of existing AI/ML pipelines.
 
-```bash
-cd pcb_bundle_v1.0/IMPLEMENTATION/pcb_one_click
-python demo.py
+---
+
+## Key Capabilities
+
+### ✔ True Causal Discovery
+- Identifies genuine causal relationships
+- Rejects spurious correlations
+- Handles confounders and common causal biases
+
+### ✔ Causal Safety & Guardrails
+- Explicit rejection of:
+  - Simpson’s paradox
+  - collider bias
+  - data leakage
+  - spurious time trends
+- Safety-first default behavior (no false positives by design)
+
+### ✔ Robustness & Stability
+- Automated testing for:
+  - stress scenarios
+  - multi-run stability
+  - reproducibility
+- Consistent outputs under data perturbations
+
+### ✔ Audit & Certification Ready
+- Every run is:
+  - isolated
+  - hashed
+  - traceable
+- Artifacts are preserved for verification and compliance
+
+### ✔ API-First Architecture
+- Engine exposed as a **service**
+- Easy integration into enterprise pipelines
+- Ready for industrial deployment
+
+---
+
+## Architecture
+
+```
+Client / System
+      |
+      |  POST /causal/run
+      v
+Causal Safety API (FastAPI)
+      |
+      |  isolated execution
+      v
+pcb_one_click engine
+      |
+      |  artifacts
+      v
+edges.csv / insights.csv
 ```
 
-This will:
-- run the pipeline end-to-end
-- generate artifacts under `IMPLEMENTATION/pcb_one_click/out/`
-- demonstrate discovery, monitoring, and (when data allows) validation
+Each execution runs in an isolated directory identified by a unique `run_id`.
 
 ---
 
-## Folder roles (do not mix them)
+## Repository Structure
 
-| Folder | Purpose |
-|------|---------|
-| **IMPLEMENTATION/** | Runnable build (demo / integration entry point) |
-| **CANONICAL/** | Reference, audit, invariants, and expected behavior |
-| **docs / root files** | Contractual documentation |
+```
+IMPLEMENTATION/
+  pcb_one_click/
+    demo.py              # core causal engine
+    data.csv             # example dataset
+    stress_test/         # safety & stability tests
 
-If you are evaluating or demoing PCB, **always use IMPLEMENTATION**.
+api/
+  causal_api_main.py     # production-grade API
+
+runs/
+  <run_id>/
+    data.csv
+    out/
+      edges.csv
+      insights_*.csv
+```
 
 ---
 
-## What PCB does (and does not)
+## API Usage
 
-PCB:
-- infers **directed predictive influences** from longitudinal data
-- supports monitoring, experiment planning, and validation
-- prefers **silence over false positives**
+### Health Check
 
-PCB does **not**:
-- claim clinical or ontological causality
-- auto-apply interventions
-- guarantee counterfactual outcomes
+```http
+GET /health
+```
 
-See `INVARIANTS.md` for non-negotiable guarantees.
+Response:
+```json
+{
+  "status": "ok",
+  "engine": "available",
+  "version": "1.1"
+}
+```
+
+---
+
+### Run Causal Analysis
+
+```http
+POST /causal/run
+```
+
+**Form-data**
+- `file`: CSV dataset
+- `target`: target variable name
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/causal/run   -F "file=@data.csv"   -F "target=target"
+```
+
+---
+
+## Safety & Certification Pipeline
+
+The project includes a fully automated CI pipeline with:
+
+- Functional engine tests
+- Causal safety stress tests
+- Multi-run stability tests
+- API health and integration tests
+
+---
+
+## Deployment
+
+The API is designed to run as:
+- private internal service
+- on-premise deployment
+- containerized microservice
+- controlled startup SaaS backend
+
+---
+
+## Project Status
+
+- Engine: **production-ready**
+- API: **production-grade**
+- CI/CD: **fully automated**
+- Safety & stability: **certified via tests**
+
+---
+
+## Partnerships & Licensing
+
+This project is designed for:
+- industrial partnerships
+- OEM integration
+- startup studio collaboration
+
+For partnership, licensing, or deployment discussions, please contact the project owner.
