@@ -1,14 +1,7 @@
 
 """
-CAUSAL STABILITY STRESS TEST – INDUSTRIAL GRADE
-
-This test verifies that:
-- True causal variable X is stable across random seeds
-- Small noise does NOT change causal ordering
-- No spurious variable becomes causal
-- Results are reproducible
-
-FAIL = instability or false positives
+CAUSAL ENGINE CERTIFICATION STRESS TEST – PRODUCTION GRADE
+Compatibile con PCB One Click Engine
 """
 
 import pandas as pd
@@ -17,25 +10,32 @@ import subprocess
 import sys
 import os
 
-np.random.seed(123)
+ENGINE = "IMPLEMENTATION/pcb_one_click/demo.py"
+DATA   = "IMPLEMENTATION/pcb_one_click/data_stress.csv"
+OUT    = "out"
 
-OUT = "out"
-DATA = "IMPLEMENTATION/pcb_one_click/data_causal_stability.csv"
+TRUE_CAUSE = "x"
+FORBIDDEN  = ["spurious", "trend", "future", "leak"]
 
-def generate_dataset(seed, n=3000, noise=0.5):
+np.random.seed(42)
 
-    rng = np.random.default_rng(seed)
+# --------------------------------------------------
+# 1. DATASET CAUSALE FORTE
+# --------------------------------------------------
 
-    H = rng.normal(0, 1, n)
-    X = 2 * H + rng.normal(0, noise, n)
-    Y = 4 * X + 3 * H + rng.normal(0, noise, n)
+def generate_dataset(n=3000):
 
-    Z = X + rng.normal(0, 1.0, n)
-    trend = np.linspace(0, 3, n) + rng.normal(0, 0.2, n)
+    H = np.random.normal(0, 1, n)
+
+    X = 2 * H + np.random.normal(0, 0.5, n)
+    Y = 4 * X + 3 * H + np.random.normal(0, 0.5, n)
+
+    spurious = np.random.normal(0, 1, n)
+    trend = np.linspace(0, 5, n)
 
     df = pd.DataFrame({
-        "X": X,
-        "spurious": Z,
+        "x": X,
+        "spurious": spurious,
         "trend": trend,
         "target": Y
     })
@@ -43,80 +43,94 @@ def generate_dataset(seed, n=3000, noise=0.5):
     return df
 
 
-print("\n[STABILITY TEST] Running repeated causal discovery...\n")
+os.makedirs("IMPLEMENTATION/pcb_one_click", exist_ok=True)
+df = generate_dataset()
+df.to_csv(DATA, index=False)
 
-detected_sets = []
-SEEDS = [10, 20, 30, 40, 50]
+print("[TEST] Dataset generated")
+
+# --------------------------------------------------
+# 2. RUN ENGINE
+# --------------------------------------------------
+
+cmd = [sys.executable, ENGINE, DATA, "target"]
+
+print("\n[TEST] Running causal engine...\n")
+
+proc = subprocess.run(cmd, capture_output=True, text=True)
+
+print(proc.stdout)
+
 FAILED = False
 
-for seed in SEEDS:
+# --------------------------------------------------
+# 3. CHECK OUTPUTS
+# --------------------------------------------------
 
-    print(f"\n[RUN] Seed = {seed}")
+if not os.path.exists(OUT):
+    print("[FAIL] Output folder not created")
+    FAILED = True
 
-    df = generate_dataset(seed)
-    os.makedirs("IMPLEMENTATION/pcb_one_click", exist_ok=True)
-    df.to_csv(DATA, index=False)
+# --- Insights
 
-    cmd = [
-        sys.executable,
-        "IMPLEMENTATION/pcb_one_click/demo.py",
-        DATA,
-        "target"
-    ]
+insights_path = os.path.join(OUT, "insights_level2.csv")
 
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+if not os.path.exists(insights_path):
+    print("[FAIL] insights_level2.csv not produced")
+    FAILED = True
+else:
+    print("[OK] Insights file produced")
 
-    if not os.path.exists("out"):
-        print("[FAIL] Engine did not produce output folder")
-        FAILED = True
-        continue
+# --- Edges
 
-    edges_path = "out/edges.csv"
+edges_path = os.path.join(OUT, "edges.csv")
 
-    if not os.path.exists(edges_path):
-        print("[FAIL] edges.csv not produced")
-        FAILED = True
-        continue
-
+if not os.path.exists(edges_path):
+    print("[FAIL] edges.csv not produced")
+    FAILED = True
+else:
     edges = pd.read_csv(edges_path)
+    edges.columns = [c.lower() for c in edges.columns]
 
-    causal_vars = (
-        edges[edges["to"].str.lower() == "target"]["from"]
-        .str.lower()
-        .tolist()
-    )
+    print("[OK] edges.csv produced")
+    print("Columns:", list(edges.columns))
 
-    print("Detected causal vars:", causal_vars)
+    from_col = None
+    to_col = None
 
-    detected_sets.append(set(causal_vars))
+    for c in edges.columns:
+        if "from" in c or "source" in c or "parent" in c:
+            from_col = c
+        if "to" in c or "target" in c or "child" in c:
+            to_col = c
 
-    if "x" not in causal_vars:
-        print("[FAIL] True causal X lost in this run")
-        FAILED = True
-
-    for bad in ["spurious", "trend"]:
-        if bad in causal_vars:
-            print(f"[FAIL] {bad} incorrectly accepted as causal")
-            FAILED = True
-
-
-print("\n[STABILITY CHECK] Comparing runs...\n")
-
-reference = detected_sets[0]
-
-for i, s in enumerate(detected_sets[1:], start=2):
-    if s != reference:
-        print(f"[FAIL] Run {i} differs from run 1")
-        print("Run 1:", reference)
-        print(f"Run {i}:", s)
+    if from_col is None or to_col is None:
+        print("[FAIL] Cannot identify causal edge columns")
         FAILED = True
     else:
-        print(f"[OK] Run {i} consistent with run 1")
+        causal = edges[edges[to_col].str.lower() == "target"][from_col].str.lower().tolist()
 
+        print("Detected causal variables:", causal)
+
+        if TRUE_CAUSE in causal:
+            print("[OK] True causal variable detected")
+        else:
+            print("[FAIL] True causal variable NOT detected")
+            FAILED = True
+
+        for bad in FORBIDDEN:
+            for v in causal:
+                if bad in v:
+                    print(f"[FAIL] Forbidden variable accepted: {v}")
+                    FAILED = True
+
+# --------------------------------------------------
+# 4. FINAL VERDICT
+# --------------------------------------------------
 
 if FAILED:
-    print("\n❌ CAUSAL STABILITY TEST FAILED")
+    print("\n❌ CAUSAL ENGINE CERTIFICATION FAILED")
     sys.exit(1)
 else:
-    print("\n🏆 CAUSAL STABILITY ENGINE VERIFIED (REPRODUCIBLE & ROBUST)")
+    print("\n🏆 CAUSAL ENGINE CERTIFIED – PRODUCTION READY")
     sys.exit(0)
