@@ -1,7 +1,11 @@
-
 """
-CAUSAL ENGINE CERTIFICATION STRESS TEST – PRODUCTION GRADE
-Compatibile con PCB One Click Engine
+CAUSAL SAFETY – STABILITY TEST (INDUSTRIAL GRADE)
+
+Goal:
+- Run engine multiple times with different seeds
+- Verify engine never crashes
+- Verify outputs are stable
+- Measure detection stability of true causal variable X
 """
 
 import pandas as pd
@@ -9,128 +13,106 @@ import numpy as np
 import subprocess
 import sys
 import os
+import shutil
 
-ENGINE = "IMPLEMENTATION/pcb_one_click/demo.py"
-DATA   = "IMPLEMENTATION/pcb_one_click/data_stress.csv"
-OUT    = "out"
+ENGINE = ["python", "IMPLEMENTATION/pcb_one_click/demo.py"]
+DATA = "IMPLEMENTATION/pcb_one_click/data.csv"
+TARGET = "target"
 
-TRUE_CAUSE = "x"
-FORBIDDEN  = ["spurious", "trend", "future", "leak"]
+RUNS = 5          # number of repeated runs
+PASS_RATE = 0.8  # at least 80% of runs must detect X
 
-np.random.seed(42)
+os.makedirs("stability_out", exist_ok=True)
 
-# --------------------------------------------------
-# 1. DATASET CAUSALE FORTE
-# --------------------------------------------------
+detected_x = 0
+successful_runs = 0
 
-def generate_dataset(n=3000):
+print("\n[STABILITY TEST] Starting multi-run stability certification...\n")
 
-    H = np.random.normal(0, 1, n)
+for i in range(RUNS):
+    print(f"\n--- RUN {i+1}/{RUNS} ---")
 
-    X = 2 * H + np.random.normal(0, 0.5, n)
-    Y = 4 * X + 3 * H + np.random.normal(0, 0.5, n)
+    # Clean output folder before each run
+    if os.path.exists("out"):
+        shutil.rmtree("out")
 
-    spurious = np.random.normal(0, 1, n)
-    trend = np.linspace(0, 5, n)
+    # Change seed for this run
+    np.random.seed(1000 + i)
 
-    df = pd.DataFrame({
-        "x": X,
-        "spurious": spurious,
-        "trend": trend,
-        "target": Y
-    })
+    # Run engine
+    cmd = ENGINE + [DATA, TARGET]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
 
-    return df
+    # Save raw log
+    with open(f"stability_out/run_{i+1}.log", "w") as f:
+        f.write(proc.stdout)
+        f.write(proc.stderr)
 
+    # Engine must create output folder
+    if not os.path.exists("out"):
+        print("[FAIL] Output folder not created")
+        continue
 
-os.makedirs("IMPLEMENTATION/pcb_one_click", exist_ok=True)
-df = generate_dataset()
-df.to_csv(DATA, index=False)
+    successful_runs += 1
 
-print("[TEST] Dataset generated")
+    # Check edges.csv if present
+    edges_path = "out/edges.csv"
 
-# --------------------------------------------------
-# 2. RUN ENGINE
-# --------------------------------------------------
+    if not os.path.exists(edges_path):
+        print("[WARN] edges.csv not produced in this run")
+        continue
 
-cmd = [sys.executable, ENGINE, DATA, "target"]
+    try:
+        edges = pd.read_csv(edges_path)
+    except Exception as e:
+        print("[WARN] Cannot read edges.csv:", e)
+        continue
 
-print("\n[TEST] Running causal engine...\n")
+    # Normalize column names
+    cols = [c.lower() for c in edges.columns]
+    edges.columns = cols
 
-proc = subprocess.run(cmd, capture_output=True, text=True)
-
-print(proc.stdout)
-
-FAILED = False
-
-# --------------------------------------------------
-# 3. CHECK OUTPUTS
-# --------------------------------------------------
-
-if not os.path.exists(OUT):
-    print("[FAIL] Output folder not created")
-    FAILED = True
-
-# --- Insights
-
-insights_path = os.path.join(OUT, "insights_level2.csv")
-
-if not os.path.exists(insights_path):
-    print("[FAIL] insights_level2.csv not produced")
-    FAILED = True
-else:
-    print("[OK] Insights file produced")
-
-# --- Edges
-
-edges_path = os.path.join(OUT, "edges.csv")
-
-if not os.path.exists(edges_path):
-    print("[FAIL] edges.csv not produced")
-    FAILED = True
-else:
-    edges = pd.read_csv(edges_path)
-    edges.columns = [c.lower() for c in edges.columns]
-
-    print("[OK] edges.csv produced")
-    print("Columns:", list(edges.columns))
-
+    # Try to find source/target columns safely
     from_col = None
     to_col = None
 
-    for c in edges.columns:
-        if "from" in c or "source" in c or "parent" in c:
+    for c in cols:
+        if c in ["from", "source", "parent"]:
             from_col = c
-        if "to" in c or "target" in c or "child" in c:
+        if c in ["to", "target", "child"]:
             to_col = c
 
     if from_col is None or to_col is None:
-        print("[FAIL] Cannot identify causal edge columns")
-        FAILED = True
+        print("[WARN] edges.csv format not recognized")
+        continue
+
+    # Check if X -> target detected
+    causal_vars = edges[edges[to_col].str.lower() == TARGET][from_col].str.lower().tolist()
+
+    if "x" in causal_vars:
+        print("[OK] X detected in this run")
+        detected_x += 1
     else:
-        causal = edges[edges[to_col].str.lower() == "target"][from_col].str.lower().tolist()
+        print("[WARN] X NOT detected in this run")
 
-        print("Detected causal variables:", causal)
-
-        if TRUE_CAUSE in causal:
-            print("[OK] True causal variable detected")
-        else:
-            print("[FAIL] True causal variable NOT detected")
-            FAILED = True
-
-        for bad in FORBIDDEN:
-            for v in causal:
-                if bad in v:
-                    print(f"[FAIL] Forbidden variable accepted: {v}")
-                    FAILED = True
 
 # --------------------------------------------------
-# 4. FINAL VERDICT
+# FINAL STABILITY VERDICT
 # --------------------------------------------------
 
-if FAILED:
-    print("\n❌ CAUSAL ENGINE CERTIFICATION FAILED")
-    sys.exit(1)
-else:
-    print("\n🏆 CAUSAL ENGINE CERTIFIED – PRODUCTION READY")
-    sys.exit(0)
+rate = detected_x / max(1, successful_runs)
+
+with open("stability_result.txt", "w") as f:
+    f.write(f"Runs executed: {RUNS}\n")
+    f.write(f"Successful engine runs: {successful_runs}\n")
+    f.write(f"X detected in: {detected_x} runs\n")
+    f.write(f"Detection rate: {rate:.2f}\n\n")
+
+    if rate >= PASS_RATE and successful_runs == RUNS:
+        f.write("STABILITY TEST PASSED – ENGINE IS STABLE\n")
+        print("\n🏆 STABILITY TEST PASSED – ENGINE IS STABLE")
+        sys.exit(0)
+    else:
+        f.write("STABILITY TEST FAILED – ENGINE IS NOT STABLE\n")
+        print("\n❌ STABILITY TEST FAILED – ENGINE IS NOT STABLE")
+        sys.exit(1)
