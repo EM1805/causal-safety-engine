@@ -24,3 +24,14 @@ stress_causal_safety:
     when: always
     paths:
       - stress_result.txt
+
+
+causal_stability:
+  stage: test
+  script:
+    - pip install pandas numpy || true
+    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py > stability_result.txt
+  artifacts:
+    paths:
+      - stability_result.txt
+  allow_failure: false
