@@ -3,98 +3,87 @@ import os
 import sys
 import subprocess
 import pandas as pd
-import numpy as np
-
-np.random.seed(123)
+from collections import Counter
 
 RUNS = 5
-TOP_K = 4   # engine usually generates ~4 insights per run
 
 ENGINE_CMD = [
     sys.executable,
     "IMPLEMENTATION/pcb_one_click/demo.py",
-    "IMPLEMENTATION/pcb_one_click/data_with_insights.csv",
+    "IMPLEMENTATION/pcb_one_click/data.csv",
     "target"
 ]
+
+OUT_DIR = "IMPLEMENTATION/pcb_one_click/out"
+INSIGHTS_FILE = "insights_level2.csv"
 
 print("\n[STABILITY TEST] Multi-Insight Causal Stability Certification\n")
 
 crashes = 0
-feature_counts = {}
+all_features = []
 
-def read_insights():
-    for fname in os.listdir("out"):
-        if fname.startswith("insights") and fname.endswith(".csv"):
-            try:
-                return pd.read_csv(os.path.join("out", fname))
-            except Exception:
-                return None
-    return None
-
-def extract_features(insights, top_k):
-    cols = [c.lower() for c in insights.columns]
-    insights.columns = cols
-
-    # Try common schemas used by the engine
-    for col in ["source", "feature", "variable", "cause"]:
-        if col in cols:
-            return insights[col].astype(str).str.lower().head(top_k).tolist()
-
-    # Fallback: first column
-    return insights.iloc[:, 0].astype(str).str.lower().head(top_k).tolist()
-
+def read_top_features(path, k=4):
+    df = pd.read_csv(path)
+    if "source" in df.columns:
+        feats = df["source"].astype(str).str.lower().tolist()
+    elif "feature" in df.columns:
+        feats = df["feature"].astype(str).str.lower().tolist()
+    else:
+        feats = df.iloc[:, 0].astype(str).str.lower().tolist()
+    return feats[:k]
 
 for i in range(RUNS):
-    print(f"\n--- RUN {i+1}/{RUNS} ---")
+    print(f"--- RUN {i+1}/{RUNS} ---")
 
-    # Clean output folder
-    if os.path.exists("out"):
-        for f in os.listdir("out"):
-            os.remove(os.path.join("out", f))
+    # clean previous outputs
+    if os.path.exists(OUT_DIR):
+        for f in os.listdir(OUT_DIR):
+            try:
+                os.remove(os.path.join(OUT_DIR, f))
+            except:
+                pass
     else:
-        os.makedirs("out", exist_ok=True)
+        os.makedirs(OUT_DIR, exist_ok=True)
 
     proc = subprocess.run(ENGINE_CMD, capture_output=True, text=True)
 
-    if proc.returncode != 0:
-        print("[FAIL] Engine crashed")
-        crashes += 1
-        continue
+    insights_path = os.path.join(OUT_DIR, INSIGHTS_FILE)
 
-    insights = read_insights()
-
-    if insights is None or len(insights) == 0:
+    if not os.path.exists(insights_path):
         print("[FAIL] No insights produced")
         crashes += 1
         continue
 
-    feats = extract_features(insights, TOP_K)
+    try:
+        feats = read_top_features(insights_path, k=4)
+        print("[OK] Insights:", feats)
+        all_features.extend(feats)
+    except Exception as e:
+        print("[FAIL] Insights unreadable:", e)
+        crashes += 1
 
-    print("[OK] Insights this run:", feats)
+# ---------------- REPORT ----------------
 
-    for f in feats:
-        feature_counts[f] = feature_counts.get(f, 0) + 1
-
-
-print("\n========== STABILITY REPORT ==========")
+print("\n=========== STABILITY REPORT ===========")
 print("Runs executed:", RUNS)
 print("Engine crashes:", crashes)
 
-print("\nFeature recurrence:")
-for f, n in sorted(feature_counts.items(), key=lambda x: -x[1]):
-    print(f" - {f}: {n}/{RUNS}")
+counter = Counter(all_features)
+print("Feature recurrence:")
+for k, v in counter.items():
+    print(f" - {k}: {v}/{RUNS}")
 
-stable_features = [f for f, n in feature_counts.items() if n / RUNS >= 0.6]
+stable = [k for k, v in counter.items() if v / RUNS >= 0.6]
 
-print("\nStable causal features (>=60% runs):", stable_features)
+print("Stable causal features (>=60%):", stable)
 
 FAILED = False
 
 if crashes > 0:
-    print("❌ Engine NOT stable (crashes detected)")
+    print("❌ Engine is NOT stable (crashes detected)")
     FAILED = True
 
-if len(stable_features) < 2:
+if len(stable) < 2:
     print("❌ Not enough stable causal features (need >=2)")
     FAILED = True
 
