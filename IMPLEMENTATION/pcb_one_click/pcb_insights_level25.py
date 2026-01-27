@@ -53,7 +53,7 @@ MIN_P_SIGN = 0.55
 MIN_EFFECT_ABS = 0.02
 
 # --- Causality hardening (conservative defaults; override via pcb.json -> level25)
-ADJUSTMENT_MODE = "full"   # "off" | "light" | "full"
+ADJUSTMENT_MODE = "light"   # "off" | "light" | "full"
 PLACEBO_ENABLE = True
 PLACEBO_FUTURE_ENABLE = True
 PLACEBO_PERM_ENABLE = True
