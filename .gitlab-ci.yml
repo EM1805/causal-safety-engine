@@ -42,13 +42,13 @@ causal_safety_certification:
 # 3. STABILITY TEST (ROBUSTNESS / REPRODUCIBILITY)
 # --------------------------------------------------
 
-causal_stability:
-  stage: stability
+stability_test:
+  stage: stress
   script:
-    - pip install pandas numpy || true
-    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py > stability_result.txt
+    - pip install pandas numpy
+    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py
   artifacts:
     when: always
     paths:
       - stability_result.txt
-  allow_failure: false
+      - stability_out/
