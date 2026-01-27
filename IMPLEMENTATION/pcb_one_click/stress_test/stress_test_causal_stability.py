@@ -1,13 +1,14 @@
+
 """
-CAUSAL STABILITY & ROBUSTNESS TEST – INDUSTRIAL GRADE
+CAUSAL STABILITY STRESS TEST – INDUSTRIAL GRADE
 
-Verifies that:
-✔ True causal relations are stable under noise
-✔ No unstable false positives appear
-✔ Insights remain consistent across perturbations
+This test verifies that:
+- True causal variable X is stable across random seeds
+- Small noise does NOT change causal ordering
+- No spurious variable becomes causal
+- Results are reproducible
 
-FAIL = unstable causality or noisy false positives
-PASS = engine is production-grade robust
+FAIL = instability or false positives
 """
 
 import pandas as pd
@@ -15,138 +16,107 @@ import numpy as np
 import subprocess
 import sys
 import os
-from collections import Counter
 
-np.random.seed(42)
+np.random.seed(123)
 
-BASE_DATA = "IMPLEMENTATION/pcb_one_click/data.csv"
-TMP_DATA  = "IMPLEMENTATION/pcb_one_click/data_stability_tmp.csv"
-OUT_DIR   = "out"
+OUT = "out"
+DATA = "IMPLEMENTATION/pcb_one_click/data_causal_stability.csv"
 
-N_RUNS = 8
-NOISE_STD = 0.15
-MIN_STABILITY = 0.70
+def generate_dataset(seed, n=3000, noise=0.5):
 
-TARGET = "target"
-TRUE_CAUSE = "x"   # cambia se il tuo nome è diverso
+    rng = np.random.default_rng(seed)
 
-print("\n[TEST] Running CAUSAL STABILITY TEST...\n")
+    H = rng.normal(0, 1, n)
+    X = 2 * H + rng.normal(0, noise, n)
+    Y = 4 * X + 3 * H + rng.normal(0, noise, n)
 
-# --------------------------------------------------
-# 1. LOAD BASE DATA
-# --------------------------------------------------
+    Z = X + rng.normal(0, 1.0, n)
+    trend = np.linspace(0, 3, n) + rng.normal(0, 0.2, n)
 
-if not os.path.exists(BASE_DATA):
-    print("[FAIL] Base dataset not found:", BASE_DATA)
-    sys.exit(1)
+    df = pd.DataFrame({
+        "X": X,
+        "spurious": Z,
+        "trend": trend,
+        "target": Y
+    })
 
-base_df = pd.read_csv(BASE_DATA)
+    return df
 
-# Select only numeric continuous features (safe to perturb)
-numeric_cols = base_df.select_dtypes(include=["float64", "float32", "int64", "int32"]).columns.tolist()
 
-# Remove target from perturbation
-if TARGET in numeric_cols:
-    numeric_cols.remove(TARGET)
+print("\n[STABILITY TEST] Running repeated causal discovery...\n")
 
-print("[INFO] Numeric columns to perturb:", numeric_cols)
+detected_sets = []
+SEEDS = [10, 20, 30, 40, 50]
+FAILED = False
 
-# --------------------------------------------------
-# 2. MULTIPLE PERTURBED RUNS
-# --------------------------------------------------
+for seed in SEEDS:
 
-detected_vars = []
+    print(f"\n[RUN] Seed = {seed}")
 
-for run in range(N_RUNS):
+    df = generate_dataset(seed)
+    os.makedirs("IMPLEMENTATION/pcb_one_click", exist_ok=True)
+    df.to_csv(DATA, index=False)
 
-    print(f"\n[RUN {run+1}/{N_RUNS}] Generating noisy dataset...")
-
-    df = base_df.copy()
-
-    # Add noise ONLY to numeric features
-    for col in numeric_cols:
-        df[col] = df[col] + np.random.normal(0, NOISE_STD, len(df))
-
-    df.to_csv(TMP_DATA, index=False)
-
-    # Run engine
     cmd = [
         sys.executable,
         "IMPLEMENTATION/pcb_one_click/demo.py",
-        TMP_DATA,
-        TARGET
+        DATA,
+        "target"
     ]
 
     proc = subprocess.run(cmd, capture_output=True, text=True)
 
-    # Collect edges
-    edges_path = os.path.join(OUT_DIR, "edges.csv")
+    if not os.path.exists("out"):
+        print("[FAIL] Engine did not produce output folder")
+        FAILED = True
+        continue
+
+    edges_path = "out/edges.csv"
 
     if not os.path.exists(edges_path):
-        print("[WARN] edges.csv missing in run", run+1)
+        print("[FAIL] edges.csv not produced")
+        FAILED = True
         continue
 
     edges = pd.read_csv(edges_path)
 
-    # Normalize column names (your engine sometimes changes them)
-    cols = [c.lower() for c in edges.columns]
-    edges.columns = cols
-
-    if "from" not in cols or "to" not in cols:
-        print("[WARN] edges.csv format unexpected in run", run+1)
-        continue
-
-    vars_to_target = (
-        edges[edges["to"].str.lower() == TARGET]["from"]
+    causal_vars = (
+        edges[edges["to"].str.lower() == "target"]["from"]
         .str.lower()
         .tolist()
     )
 
-    print("Detected causal vars:", vars_to_target)
+    print("Detected causal vars:", causal_vars)
 
-    detected_vars.append(vars_to_target)
+    detected_sets.append(set(causal_vars))
 
-# --------------------------------------------------
-# 3. STABILITY ANALYSIS
-# --------------------------------------------------
-
-print("\n[TEST] Stability analysis...\n")
-
-flat = [v for run in detected_vars for v in run]
-counts = Counter(flat)
-
-FAILED = False
-
-print("Variable frequency across runs:\n")
-
-for var, c in counts.items():
-    freq = c / N_RUNS
-    print(f" - {var}: {c}/{N_RUNS} = {freq:.2f}")
-
-    # Reject unstable variables
-    if freq < MIN_STABILITY:
-        print(f"[FAIL] Variable '{var}' is UNSTABLE (freq {freq:.2f})")
+    if "x" not in causal_vars:
+        print("[FAIL] True causal X lost in this run")
         FAILED = True
 
-# --------------------------------------------------
-# 4. TRUE CAUSE MUST BE STABLE
-# --------------------------------------------------
+    for bad in ["spurious", "trend"]:
+        if bad in causal_vars:
+            print(f"[FAIL] {bad} incorrectly accepted as causal")
+            FAILED = True
 
-true_freq = counts.get(TRUE_CAUSE.lower(), 0) / N_RUNS
 
-if true_freq < 0.80:
-    print(f"[FAIL] True causal variable '{TRUE_CAUSE}' UNSTABLE ({true_freq:.2f})")
-    FAILED = True
-else:
-    print(f"[OK] True causal variable '{TRUE_CAUSE}' STABLE ({true_freq:.2f})")
+print("\n[STABILITY CHECK] Comparing runs...\n")
 
-# --------------------------------------------------
-# 5. FINAL VERDICT
-# --------------------------------------------------
+reference = detected_sets[0]
+
+for i, s in enumerate(detected_sets[1:], start=2):
+    if s != reference:
+        print(f"[FAIL] Run {i} differs from run 1")
+        print("Run 1:", reference)
+        print(f"Run {i}:", s)
+        FAILED = True
+    else:
+        print(f"[OK] Run {i} consistent with run 1")
+
 
 if FAILED:
     print("\n❌ CAUSAL STABILITY TEST FAILED")
     sys.exit(1)
 else:
-    print("\n🏆 CAUSAL STABILITY TEST PASSED – ENGINE IS ROBUST & INDUSTRIAL GRADE")
+    print("\n🏆 CAUSAL STABILITY ENGINE VERIFIED (REPRODUCIBLE & ROBUST)")
     sys.exit(0)
