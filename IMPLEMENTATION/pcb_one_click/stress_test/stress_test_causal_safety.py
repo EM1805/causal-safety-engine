@@ -6,7 +6,11 @@ This test must GENERATE INSIGHTS only when causal signal is real. False positive
 
 Usage (GitLab CI): python IMPLEMENTATION/pcb_one_click/stress_test_causal_safety.py """
 
-import pandas as pd import numpy as np import subprocess import os import sys
+import pandas as pd 
+import numpy as np 
+import subprocess 
+import os 
+import sys
 
 OUT = "out" DATA = "IMPLEMENTATION/pcb_one_click/data_causal_stress.csv"
 
