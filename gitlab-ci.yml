@@ -19,7 +19,7 @@ stress_causal_safety:
   stage: stress
   script:
     - pip install pandas numpy
-    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety.py
+    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety2.py
   artifacts:
     when: always
     paths:
