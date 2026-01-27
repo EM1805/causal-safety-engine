@@ -2,7 +2,7 @@ image: python:3.10
 
 stages:
   - test
-  
+  - stress
 
 functional_test:
   stage: test
@@ -12,3 +12,12 @@ functional_test:
   artifacts:
     paths:
       - result.txt
+
+stress_tests:
+  stage: stress
+  script:
+    - pip install pandas numpy || true
+    - python IMPLEMENTATION/pcb_one_click/stress_test_insights.py > stress_result.txt
+  artifacts:
+    paths:
+      - stress_result.txt
