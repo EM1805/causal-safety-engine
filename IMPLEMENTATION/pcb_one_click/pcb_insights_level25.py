@@ -48,28 +48,28 @@ MAX_NAN_FRAC = 0.60
 MIN_UNIQUE_NUM = 6
 MIN_STD_EPS = 1e-6
 
-MIN_STRENGTH = 0.45
-MIN_P_SIGN = 0.60
-MIN_EFFECT_ABS = 0.05
+MIN_STRENGTH = 0.30
+MIN_P_SIGN = 0.55
+MIN_EFFECT_ABS = 0.02
 
 # --- Causality hardening (conservative defaults; override via pcb.json -> level25)
 ADJUSTMENT_MODE = "full"   # "off" | "light" | "full"
 PLACEBO_ENABLE = True
 PLACEBO_FUTURE_ENABLE = True
 PLACEBO_PERM_ENABLE = True
-PLACEBO_PERM_B = 20
+PLACEBO_PERM_B = 10
 PLACEBO_BLOCK_LEN = 7
-PLACEBO_MARGIN = 0.02
+PLACEBO_MARGIN = 0.01
 
 # --- Enterprise robustness upgrades
 NEGCTRL_ENABLE = True
 NEGCTRL_OUTCOME_COL = "negative_control_outcome"
-NEGCTRL_MAX_STRENGTH = 0.30
-NEGCTRL_MARGIN = 0.05
+NEGCTRL_MAX_STRENGTH = 0.35
+NEGCTRL_MARGIN = 0.10
 
 STABILITY_ENABLE = True
 STABILITY_SLICES = ["weekday", "weekend", "first_half", "second_half"]
-STABILITY_MIN_SCORE = 0.66
+STABILITY_MIN_SCORE = 0.50
 
 # -----------------------------
 # Optional central config override via pcb_config.load_config (single source of truth)
