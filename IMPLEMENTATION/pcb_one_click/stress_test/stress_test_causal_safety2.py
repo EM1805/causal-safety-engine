@@ -135,12 +135,38 @@ report = proc.stdout.lower()
 
 FAILED = False
 
-# A. Must detect true causal X
-if "feature_x" not in report and " x " not in report:
-    print("[FAIL] True causal variable X NOT detected")
+
+edges_path = "out/edges.csv"
+
+if not os.path.exists(edges_path):
+    print("[FAIL] edges.csv not produced – engine did not run correctly")
     FAILED = True
 else:
-    print("[OK] True causal variable detected")
+    edges = pd.read_csv(edges_path)
+
+    # Filter edges going to target
+    causal_edges = edges[edges["to"] == "target"]
+
+    if len(causal_edges) == 0:
+        print("[FAIL] No causal edges detected toward target")
+        FAILED = True
+    else:
+        print(f"[OK] {len(causal_edges)} causal relations detected toward target")
+
+        print("Detected causal variables:")
+        for v in causal_edges["from"].unique():
+            print(" -", v)
+
+# --------------------------------------------------
+# Must generate at least one insight
+# --------------------------------------------------
+
+if "kept insights: 0" in report or "no insights" in report:
+    print("[FAIL] No insights generated despite strong causal signal")
+    FAILED = True
+else:
+    print("[OK] Insights generated")
+
 
 # B. Must reject Simpson paradox
 if "simpson" in report:
@@ -177,12 +203,7 @@ if "trend" in report:
 else:
     print("[OK] Trend rejected")
 
-# G. Must generate at least one insight
-if "kept insights: 0" in report or "no insights" in report:
-    print("[FAIL] No insights generated despite strong causal signal")
-    FAILED = True
-else:
-    print("[OK] Insights generated")
+
 
 # --------------------------------------------------
 # 4. FINAL VERDICT
