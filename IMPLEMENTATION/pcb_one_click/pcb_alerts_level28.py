@@ -13,16 +13,8 @@ import json
 import numpy as np
 import pandas as pd
 
-# Safe import of invariants module
-try:
-    from pcb_invariants import check_invariants
-    INVARIANTS_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    INVARIANTS_AVAILABLE = False
-    def check_invariants(params):
-        """Fallback when pcb_invariants is not available"""
-        return True, ""
 
+from pcb_invariants import check_invariants
 OUT_DIR = "out"
 
 # Defaults (defined early so config override works)
@@ -45,7 +37,7 @@ PRIORITY_Z_WEIGHT = 0.25
 try:
     from pcb_config import load_config  # local file
     _CFG = load_config()
-except (ImportError, ModuleNotFoundError, Exception):
+except Exception:
     _CFG = {}
 
 # Allow overriding common columns/paths via pcb.json (keeps backward compatibility)
@@ -245,7 +237,7 @@ def main(data_csv_path=None, insights_path=INSIGHTS_L2):
 
     metrics = {
         "level": "2.8",
-        "level_version": "ignore_flagged+metrics_v1.1",
+        "level_version": "ignore_flagged+metrics_v1",
         "data_path": str(data_csv_path),
         "insights_path": str(insights_path),
         "target_col": str(TARGET_COL),
@@ -272,7 +264,7 @@ def main(data_csv_path=None, insights_path=INSIGHTS_L2):
         "n_skipped_z_failed": 0,
         "n_skipped_not_triggered": 0,
         "n_skipped_invariant": 0,
-        "invariants_enabled": int(1 if INVARIANTS_AVAILABLE else 0),
+        "invariants_enabled": 1,
 
         "n_after_basic_filters": 0,
         "n_after_zscore": 0,
@@ -378,10 +370,6 @@ def main(data_csv_path=None, insights_path=INSIGHTS_L2):
             triggered = 0
             reason = "delta_unknown_conservative_no_trigger"
 
-        if triggered != 1:
-            metrics["n_skipped_not_triggered"] += 1
-            continue
-
         # Invariants: hard safety rules (block even if triggered)
         ok, inv_reason = check_invariants({
             "level": "2.8",
@@ -394,6 +382,9 @@ def main(data_csv_path=None, insights_path=INSIGHTS_L2):
         })
         if not ok:
             metrics["n_skipped_invariant"] += 1
+            continue
+        if triggered != 1:
+            metrics["n_skipped_not_triggered"] += 1
             continue
 
         pr = _priority(strength, abs(z))
@@ -468,7 +459,6 @@ def main(data_csv_path=None, insights_path=INSIGHTS_L2):
     print("Saved:", OUT_METRICS_JSON)
     print("Alerts:", len(df_a))
     print("Guardrail ignore policy:", "ON" if IGNORE_FLAGGED_INSIGHTS else "OFF")
-    print("Invariants module:", "LOADED" if INVARIANTS_AVAILABLE else "NOT AVAILABLE (using fallback)")
 
     if len(df_a) > 0:
         show = ["insight_id", "source", "lag", "z_source_today", "strength", "priority", "reason"]
