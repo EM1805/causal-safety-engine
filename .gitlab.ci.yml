@@ -1,0 +1,54 @@
+image: python:3.10
+
+stages:
+  - test
+  - stress
+  - stability
+
+# --------------------------------------------------
+# 1. FUNCTIONAL BASIC TEST
+# --------------------------------------------------
+
+functional_test:
+  stage: test
+  script:
+    - pip install pandas numpy || true
+    - python IMPLEMENTATION/pcb_one_click/demo.py IMPLEMENTATION/pcb_one_click/data.csv target > result.txt
+  artifacts:
+    when: always
+    paths:
+      - result.txt
+  allow_failure: false
+
+
+# --------------------------------------------------
+# 2. CAUSAL SAFETY CERTIFICATION (MAIN TEST)
+# --------------------------------------------------
+
+causal_safety_certification:
+  stage: stress
+  script:
+    - pip install pandas numpy || true
+    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety2.py > stress_result.txt
+  artifacts:
+    when: always
+    paths:
+      - stress_result.txt
+      - out/
+  allow_failure: false
+
+
+# --------------------------------------------------
+# 3. STABILITY TEST (ROBUSTNESS / REPRODUCIBILITY)
+# --------------------------------------------------
+
+causal_stability:
+  stage: stability
+  script:
+    - pip install pandas numpy || true
+    - python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py > stability_result.txt
+  artifacts:
+    when: always
+    paths:
+      - stability_result.txt
+  allow_failure: false
