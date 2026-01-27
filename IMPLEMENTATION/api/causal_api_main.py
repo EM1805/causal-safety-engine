@@ -27,7 +27,6 @@ ENGINE_PATH = os.path.join(
 )
 
 
-ENGINE_PATH = "IMPLEMENTATION/pcb_one_click/demo.py"
 BASE_OUT = "runs"
 ENGINE_TIMEOUT = 300  # seconds
 
