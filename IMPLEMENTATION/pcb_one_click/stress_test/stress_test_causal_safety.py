@@ -12,7 +12,8 @@ import subprocess
 import os 
 import sys
 
-OUT = "out" DATA = "IMPLEMENTATION/pcb_one_click/data_causal_stress.csv"
+OUT = "out" 
+DATA = "IMPLEMENTATION/pcb_one_click/data_causal_stress.csv"
 
 np.random.seed(42)
 
