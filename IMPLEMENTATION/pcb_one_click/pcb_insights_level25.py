@@ -71,34 +71,20 @@ STABILITY_ENABLE = True
 STABILITY_SLICES = ["weekday", "weekend", "first_half", "second_half"]
 STABILITY_MIN_SCORE = 0.66
 
-# Constants for stability check
-STABILITY_STRENGTH_MULTIPLIER = 0.85
-
-# Constants for correlation thresholds
-MIN_CORR_SAMPLES = 15
-MIN_STD_FOR_CORR = 1e-9
-
 # -----------------------------
 # Optional central config override via pcb_config.load_config (single source of truth)
 # -----------------------------
 try:
     from pcb_config import load_config  # local file
     _CFG = load_config()
-except (ImportError, ModuleNotFoundError, Exception):
-    _CFG = {}
-
-# Ensure _CFG is a dictionary
-if not isinstance(_CFG, dict):
+except Exception:
     _CFG = {}
 
 OUT_DIR = str(_CFG.get("out_dir", OUT_DIR))
 DATE_COL = str(_CFG.get("date_col", DATE_COL))
 TARGET_COL = str(_CFG.get("target_col") or _CFG.get("target") or TARGET_COL)
 
-lvl25 = _CFG.get("level25", {})
-if not isinstance(lvl25, dict):
-    lvl25 = {}
-
+lvl25 = _CFG.get("level25", {}) if isinstance(_CFG, dict) else {}
 DETREND_MODE = str(lvl25.get("detrend_mode", DETREND_MODE))
 MAX_LAG = int(lvl25.get("max_lag", MAX_LAG))
 MIN_SUPPORT_N = int(lvl25.get("min_support_n", MIN_SUPPORT_N))
@@ -220,12 +206,11 @@ def _standardize(x):
     x = np.asarray(x, dtype=float)
     mu = np.nanmean(x)
     sd = np.nanstd(x)
-    if (not np.isfinite(sd)) or sd < MIN_STD_EPS:
+    if (not np.isfinite(sd)) or sd < 1e-9:
         return x * np.nan
     return (x - mu) / sd
 
 def _paired_xy(df, source, target, lag):
-    """Extract paired (x, y) values with specified lag."""
     x = pd.to_numeric(df[source], errors="coerce").to_numpy(dtype=float)
     y = pd.to_numeric(df[target], errors="coerce").to_numpy(dtype=float)
 
@@ -240,10 +225,7 @@ def _paired_xy(df, source, target, lag):
     return x0[m], y1[m]
 
 def _paired_xy_future(df, source, target, lag):
-    """
-    Placebo test: FUTURE X should not explain Y(t).
-    Returns (x_future, y_now) pairs.
-    """
+    # Placebo: FUTURE X should not explain Y(t)
     x0 = pd.to_numeric(df[source], errors="coerce").to_numpy(dtype=float)
     y0 = pd.to_numeric(df[target], errors="coerce").to_numpy(dtype=float)
     lag = int(lag)
@@ -255,7 +237,6 @@ def _paired_xy_future(df, source, target, lag):
     return x_future[m], y_now[m]
 
 def _block_permute_series(x, block_len, rng):
-    """Permute series by shuffling blocks (for placebo permutation tests)."""
     x = np.asarray(x, dtype=float)
     n = int(len(x))
     b = int(max(2, block_len))
@@ -270,7 +251,6 @@ def _block_permute_series(x, block_len, rng):
     return np.concatenate(blocks, axis=0)
 
 def _ensure_adjustment_covariates(df, target_used, mode):
-    """Create adjustment covariates based on adjustment mode."""
     out = df.copy()
     covs = []
     mode = str(mode).lower()
@@ -290,13 +270,12 @@ def _ensure_adjustment_covariates(df, target_used, mode):
     return out, covs
 
 def _residualize_y(df, y_col, cov_cols):
-    """Remove covariate effects from y using linear regression."""
     y = pd.to_numeric(df[y_col], errors="coerce").to_numpy(dtype=float)
     if not cov_cols:
         return pd.Series(y, index=df.index)
     X = np.vstack([pd.to_numeric(df[c], errors="coerce").to_numpy(dtype=float) for c in cov_cols]).T
     m = np.isfinite(y) & np.all(np.isfinite(X), axis=1)
-    if int(np.sum(m)) < MIN_SUPPORT_N:
+    if int(np.sum(m)) < 25:
         return pd.Series(y, index=df.index)
     A = np.column_stack([np.ones(int(np.sum(m))), X[m]])
     beta, *_ = np.linalg.lstsq(A, y[m], rcond=None)
@@ -304,7 +283,6 @@ def _residualize_y(df, y_col, cov_cols):
     return pd.Series(y - yhat, index=df.index)
 
 def _delta_high_low(x, y, q_low=Q_LOW, q_high=Q_HIGH):
-    """Compute effect size by comparing high vs low quantiles of x on y."""
     if len(x) < 5:
         return np.nan, 0, 0
     lo = np.nanquantile(x, q_low)
@@ -318,7 +296,6 @@ def _delta_high_low(x, y, q_low=Q_LOW, q_high=Q_HIGH):
     return float(np.mean(high) - np.mean(low)), int(len(low)), int(len(high))
 
 def _bootstrap_ci_delta(x, y, b=BOOT_B, alpha=BOOT_ALPHA):
-    """Compute bootstrap confidence interval for delta."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     n = len(x)
@@ -335,7 +312,6 @@ def _bootstrap_ci_delta(x, y, b=BOOT_B, alpha=BOOT_ALPHA):
     return float(np.percentile(boots, lo)), float(np.percentile(boots, hi))
 
 def _window_sign_prob(df, source, target, lag):
-    """Compute probability that effect sign is consistent across sliding windows."""
     x_full, y_full = _paired_xy(df, source, target, lag)
     if len(x_full) < MIN_SUPPORT_N:
         return np.nan, 0
@@ -371,7 +347,6 @@ def _window_sign_prob(df, source, target, lag):
     return float(np.mean(wins)), int(len(wins))
 
 def _ci_width_penalty(ci_low, ci_high):
-    """Apply penalty for wide confidence intervals."""
     if not USE_CI_WIDTH_PENALTY:
         return 1.0
     lo = _safe_float(ci_low, np.nan)
@@ -386,7 +361,6 @@ def _ci_width_penalty(ci_low, ci_high):
     return float(np.clip(mult, 0.0, 1.0))
 
 def _strength_score(effect_size, p_sign, support_n, ci_low=np.nan, ci_high=np.nan):
-    """Compute overall strength score combining effect size, sign consistency, and sample size."""
     eff = abs(_safe_float(effect_size, np.nan))
     ps = _safe_float(p_sign, np.nan)
     n = _safe_float(support_n, 0.0)
@@ -401,10 +375,7 @@ def _strength_score(effect_size, p_sign, support_n, ci_low=np.nan, ci_high=np.na
 
 
 def _compute_strength_for_outcome(df, source, outcome_col, lag):
-    """
-    Compute core edge stats for a given outcome column.
-    Used for negative controls and slices.
-    """
+    """Compute core edge stats for a given outcome column (used for negative controls and slices)."""
     x, y = _paired_xy(df, source, outcome_col, lag)
     support_n = int(len(x))
     if support_n < int(MIN_SUPPORT_N):
@@ -459,10 +430,7 @@ def _slice_masks(df):
 
 
 def _stability_score(df, source, outcome_col, lag):
-    """
-    Compute stability score across slices.
-    Returns the fraction of slices that preserve sign + strength.
-    """
+    """Compute stability score across slices as the fraction of slices that preserve sign + strength."""
     if not STABILITY_ENABLE:
         return np.nan, {}, 1
 
@@ -500,7 +468,7 @@ def _stability_score(df, source, outcome_col, lag):
         used += 1
         sign_ok = (np.sign(details[name]["delta"]) == full_sign)
         # allow some degradation vs full; still must be meaningfully strong
-        strength_ok = (details[name]["strength"] >= max(0.0, STABILITY_STRENGTH_MULTIPLIER * full_strength))
+        strength_ok = (details[name]["strength"] >= max(0.0, 0.85 * full_strength))
         if sign_ok and strength_ok:
             passed += 1
 
@@ -511,7 +479,6 @@ def _stability_score(df, source, outcome_col, lag):
     return float(score), details, int(1 if score >= float(STABILITY_MIN_SCORE) else 0)
 
 def _make_statement(source, target, lag, delta, ci_lo, ci_hi):
-    """Generate human-readable statement about the relationship."""
     src = source.replace("_", " ")
     tgt = target.replace("_", " ")
     d = _safe_float(delta, np.nan)
@@ -530,7 +497,6 @@ def _make_statement(source, target, lag, delta, ci_lo, ci_hi):
     return "Potential relationship: %s → %s (lag %d)." % (src, tgt, int(lag))
 
 def _make_reco(source, target, lag, delta):
-    """Generate actionable recommendation."""
     src = source.replace("_", " ")
     tgt = target.replace("_", " ")
     d = _safe_float(delta, np.nan)
@@ -541,7 +507,6 @@ def _make_reco(source, target, lag, delta):
     return "Consider reducing %s (within safe limits) and observe %s over the next %d day(s)." % (src, tgt, int(lag))
 
 def _is_usable_source(series_num):
-    """Check if a source column has sufficient quality for analysis."""
     x = pd.to_numeric(series_num, errors="coerce").astype(float)
     nan_frac = float(x.isna().mean())
     if nan_frac > float(MAX_NAN_FRAC):
@@ -556,15 +521,14 @@ def _is_usable_source(series_num):
     return True
 
 def _corr_safe(a, b):
-    """Safely compute correlation between two arrays."""
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     m = np.isfinite(a) & np.isfinite(b)
-    if int(m.sum()) < MIN_CORR_SAMPLES:
+    if int(m.sum()) < 15:
         return np.nan
     aa = a[m]
     bb = b[m]
-    if float(np.nanstd(aa)) < MIN_STD_FOR_CORR or float(np.nanstd(bb)) < MIN_STD_FOR_CORR:
+    if float(np.nanstd(aa)) < 1e-9 or float(np.nanstd(bb)) < 1e-9:
         return np.nan
     try:
         return float(np.corrcoef(aa, bb)[0, 1])
@@ -575,10 +539,6 @@ def _corr_safe(a, b):
 # Guardrails v1.1
 # -----------------------------
 def _guardrails_drift(df, source, target_used):
-    """
-    Check for drift: high correlation with time for both source and target.
-    This can indicate spurious relationships driven by trends.
-    """
     x = pd.to_numeric(df[source], errors="coerce").to_numpy(dtype=float)
     y = pd.to_numeric(df[target_used], errors="coerce").to_numpy(dtype=float)
     t = np.arange(len(df), dtype=float)
@@ -641,7 +601,6 @@ def _guardrails_leakage_for_lag(df, source, target_used, lag):
     }
 
 def _guardrail_merge_reason(leakage_flag, drift_flag):
-    """Merge guardrail flags and determine reason."""
     if int(leakage_flag) == 1:
         return 1, "leakage_future_corr"
     if int(drift_flag) == 1:
@@ -900,7 +859,7 @@ def main(data_csv_path=None, target_col=TARGET_COL, max_lag=MAX_LAG):
     _save_csv(df_out, OUT_CSV)
     _save_jsonl(df_out, OUT_JSONL)
 
-    print("\n=== PCB LEVEL 2.5 (insights) v1.1 ===")
+    print("\n=== PCB LEVEL 2.5 (insights) ===")
     print("Data:", data_csv_path)
     print("Target used:", target_used)
     print("Saved:", EDGES_PATH)
