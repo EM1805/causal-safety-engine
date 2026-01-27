@@ -21,6 +21,7 @@ functional_test:
   allow_failure: false
 
 
+
 # --------------------------------------------------
 # 2. CAUSAL SAFETY CERTIFICATION (MAIN TEST)
 # --------------------------------------------------
@@ -52,3 +53,14 @@ stability_test:
     paths:
       - stability_result.txt
       - stability_out/
+
+
+
+api_test:
+  stage: test
+  image: python:3.10
+  script:
+    - pip install -r IMPLEMENTATION/api/requirements_api.txt
+    - uvicorn IMPLEMENTATION.api.causal_api_main:app --port 8000 &
+    - sleep 5
+    - curl http://localhost:8000/health
