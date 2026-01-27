@@ -33,7 +33,7 @@ try:
     from pcb_config import load_config  # local file
     _CFG = load_config()
 except Exception:
-    _CFG = {}
+    _CFG = {{}}
 
 # Allow overriding common columns/paths via pcb.json (keeps backward compatibility)
 OUT_DIR = str(_CFG.get("out_dir", OUT_DIR))
