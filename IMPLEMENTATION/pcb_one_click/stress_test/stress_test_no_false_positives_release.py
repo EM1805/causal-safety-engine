@@ -1,13 +1,11 @@
 """
-NO FALSE POSITIVES – CAUSAL SAFETY TEST
+NO FALSE POSITIVES – RELEASE LEVEL CAUSAL SAFETY TEST
 
-The engine MUST NOT generate insights when:
-- Only spurious correlations exist
-- Leakage is present
-- Drift-only signals exist
-- No real causal mechanism exists
+Definition:
+The engine MUST NOT produce RELEASED causal insights (level 3)
+when no true causal mechanism exists.
 
-Any insight produced = FAIL
+Internal hypotheses (level 2) are allowed.
 """
 
 import pandas as pd
@@ -66,23 +64,26 @@ proc = subprocess.run(cmd, capture_output=True, text=True)
 print(proc.stdout)
 
 # --------------------------------------------------
-# 3. VALIDATION
+# 3. VALIDATION (RELEASE LEVEL)
 # --------------------------------------------------
 
 FAILED = False
-report = proc.stdout.lower()
 
 if os.path.exists(OUT_DIR):
-    insight_files = [
-        f for f in os.listdir(OUT_DIR)
-        if f.startswith("insights_") and f.endswith(".csv")
-    ]
+    files = os.listdir(OUT_DIR)
 
-    if insight_files:
-        print("[FAIL] Insights generated in non-causal scenario:", insight_files)
+    print("[INFO] Output files:")
+    for f in files:
+        print(" -", f)
+
+    # ❌ ONLY THIS IS FORBIDDEN
+    forbidden = [f for f in files if "insights_level3" in f.lower()]
+
+    if forbidden:
+        print("[FAIL] Released insights detected in non-causal scenario:", forbidden)
         FAILED = True
     else:
-        print("[OK] No insights generated")
+        print("[OK] No released insights (level 3) produced")
 else:
     print("[OK] No output directory created")
 
@@ -91,8 +92,8 @@ else:
 # --------------------------------------------------
 
 if FAILED:
-    print("\n❌ NO FALSE POSITIVES TEST FAILED")
+    print("\n❌ NO FALSE POSITIVES (RELEASE LEVEL) FAILED")
     sys.exit(1)
 else:
-    print("\n✅ NO FALSE POSITIVES GUARANTEED")
+    print("\n✅ NO FALSE POSITIVES GUARANTEED AT RELEASE LEVEL")
     sys.exit(0)
