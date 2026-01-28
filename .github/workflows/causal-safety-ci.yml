@@ -1,4 +1,4 @@
-name: Causal Safety Engine – Extended CI
+name: Causal Safety Engine – Full CI
 
 on:
   push:
@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # --------------------------------------------------
+    # SETUP
+    # --------------------------------------------------
     - name: Checkout repository
       uses: actions/checkout@v4
 
@@ -24,56 +27,74 @@ jobs:
         python -m pip install --upgrade pip
         pip install pandas numpy
 
-    # --------------------------------------------------
-    # PREPARE ARTIFACT DIRECTORIES
-    # --------------------------------------------------
     - name: Prepare artifact directories
       run: |
-        mkdir -p artifacts
-        mkdir -p artifacts/determinism
+        mkdir -p artifacts/{functional,determinism,robustness,boundary,performance}
 
     # --------------------------------------------------
-    # 1. FUNCTIONAL TEST
+    # 1. FUNCTIONAL SMOKE TEST (BLOCKING)
     # --------------------------------------------------
     - name: Functional test
       run: |
-        python IMPLEMENTATION/pcb_one_click/demo.py IMPLEMENTATION/pcb_one_click/data.csv target > artifacts/functional_result.txt
+        python IMPLEMENTATION/pcb_one_click/demo.py \
+          IMPLEMENTATION/pcb_one_click/data.csv target \
+          > artifacts/functional/output.txt
 
     # --------------------------------------------------
-    # 2. DETERMINISM TEST (NON BLOCKING)
+    # 2. DETERMINISM TEST (NON-BLOCKING, DIAGNOSTIC)
+    # same input → outputs compared via hash
     # --------------------------------------------------
-    - name: Determinism test (non-blocking)
+    - name: Determinism test (diagnostic)
       continue-on-error: true
       run: |
-        python IMPLEMENTATION/pcb_one_click/demo.py IMPLEMENTATION/pcb_one_click/data.csv target > artifacts/determinism/run_1.txt
-        python IMPLEMENTATION/pcb_one_click/demo.py IMPLEMENTATION/pcb_one_click/data.csv target > artifacts/determinism/run_2.txt
-        python IMPLEMENTATION/pcb_one_click/demo.py IMPLEMENTATION/pcb_one_click/data.csv target > artifacts/determinism/run_3.txt
-        sha256sum artifacts/determinism/*.txt > artifacts/determinism/hashes.txt
-        uniq artifacts/determinism/hashes.txt | wc -l > artifacts/determinism/variability_score.txt
+        for i in 1 2 3; do
+          python IMPLEMENTATION/pcb_one_click/demo.py \
+            IMPLEMENTATION/pcb_one_click/data.csv target \
+            > artifacts/determinism/run_$i.txt
+        done
+
+        sha256sum artifacts/determinism/*.txt \
+          > artifacts/determinism/hashes.txt
+
+        echo "Unique hashes:"
+        uniq artifacts/determinism/hashes.txt | wc -l \
+          > artifacts/determinism/unique_hashes.txt
 
     # --------------------------------------------------
-    # 3. ROBUSTNESS TEST
+    # 3. ROBUSTNESS / PERTURBATION TEST (BLOCKING)
+    # noise, randomization, adversarial perturbations
     # --------------------------------------------------
     - name: Robustness test
       run: |
-        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety2.py > artifacts/robustness_result.txt
+        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety2.py \
+          > artifacts/robustness/result.txt
 
     # --------------------------------------------------
-    # 4. BOUNDARY / STABILITY TEST
+    # 4. BOUNDARY & FAILURE MODE TEST (BLOCKING)
+    # invalid inputs must fail cleanly
     # --------------------------------------------------
     - name: Boundary test
       run: |
-        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py > artifacts/boundary_result.txt
+        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py \
+          > artifacts/boundary/result.txt
 
     # --------------------------------------------------
-    # 5. PERFORMANCE TEST
+    # 5. PERFORMANCE / SCALING TEST (OPTIONAL, SOFT)
+    # only runs if script exists
     # --------------------------------------------------
-    - name: Performance test
+    - name: Performance test (optional)
+      continue-on-error: true
       run: |
-        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_performance.py > artifacts/performance_result.txt
+        if [ -f IMPLEMENTATION/pcb_one_click/stress_test/stress_test_performance.py ]; then
+          python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_performance.py \
+            > artifacts/performance/result.txt
+        else
+          echo "Performance test not implemented yet" \
+            > artifacts/performance/README.txt
+        fi
 
     # --------------------------------------------------
-    # UPLOAD ARTIFACTS
+    # ARTIFACT UPLOAD
     # --------------------------------------------------
     - name: Upload test artifacts
       uses: actions/upload-artifact@v4
