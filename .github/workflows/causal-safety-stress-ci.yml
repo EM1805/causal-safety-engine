@@ -1,0 +1,47 @@
+name: Causal Safety Stress Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  causal-safety-stress:
+    runs-on: ubuntu-latest
+
+    steps:
+    # ---------------------------------------
+    # SETUP
+    # ---------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas numpy
+
+    # ---------------------------------------
+    # CAUSAL SAFETY STRESS TEST
+    # ---------------------------------------
+    - name: Run causal safety stress test
+      run: |
+        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety.py
+
+    # ---------------------------------------
+    # ARTIFACTS (optional but recommended)
+    # ---------------------------------------
+    - name: Upload stress test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: causal-safety-stress-results
+        path: |
+          stress_result.txt
+          out/
