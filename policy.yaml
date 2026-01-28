@@ -1,0 +1,26 @@
+# PCB Authority Policy v1.0 (Balanced–Safety)
+# This policy reduces over-blocking by introducing a FLAG state (soft constraints).
+# ALLOW remains strict. BLOCK is used for instability or integrity risks (leakage/drift/guardrail).
+
+authority_policy: PCB_Authority_Policy_v1_0_Balanced
+states: [ALLOW, FLAG, BLOCK_INTERVENTION]
+
+thresholds:
+  allow:
+    min_support_n: 30
+    min_strength: 0.02
+    min_sign_stability: 0.85
+  flag:
+    min_support_n: 20
+    min_strength: 0.02
+    min_sign_stability: 0.65
+
+integrity_hard_block:
+  leakage_gap_thr: 0.25
+  leakage_future_thr: 0.20
+  drift_thr: 0.35
+  guardrail_flag_blocks: true
+
+do_check_propagation:
+  non_identifiable:
+    default: FLAG_if_directionally_consistent_else_BLOCK
