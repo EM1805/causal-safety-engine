@@ -31,7 +31,7 @@ jobs:
     # -------------------------------
     - name: Run causal stability certification
       run: |
-        python IMPLEMENTATION/pcb_one_click/stress_test/stability_test.py
+        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py
 
     # -------------------------------
     # ARTIFACTS
