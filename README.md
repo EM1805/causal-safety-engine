@@ -8,6 +8,7 @@
 [![Causal Safety Stress Test](https://github.com/EM1805/causal-safety-engine/actions/workflows/causal-safety-stress-ci.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/causal-safety-stress-ci.yml)
 [![Functional CI](https://github.com/EM1805/causal-safety-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/ci.yml)
 [![Causal Engine – Stability Certification](https://github.com/EM1805/causal-safety-engine/actions/workflows/stability-ci.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/stability-ci.yml)
+[![Causal Engine – No False Positives (Release Gate)](https://github.com/EM1805/causal-safety-engine/actions/workflows/no-false-positives.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/no-false-positives.yml)
 
 ## Overview
 
