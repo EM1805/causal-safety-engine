@@ -1,0 +1,47 @@
+name: Causal Silence Gate – No False Positives
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  causal-silence-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    # --------------------------------------------------
+    # SETUP
+    # --------------------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas numpy
+
+    # --------------------------------------------------
+    # CAUSAL SILENCE TEST
+    # --------------------------------------------------
+    - name: Causal Silence Test (No False Positives)
+      run: |
+        python IMPLEMENTATION/pcb_one_click/stress_test/no_false_positives_test.py
+
+    # --------------------------------------------------
+    # ARTIFACTS (optional but recommended)
+    # --------------------------------------------------
+    - name: Upload silence test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: causal-silence-artifacts
+        path: |
+          IMPLEMENTATION/pcb_one_click/out/
