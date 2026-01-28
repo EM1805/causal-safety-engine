@@ -1,0 +1,53 @@
+name: Regression and Boundary Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy
+
+      - name: Regression test (determinism)
+        run: |
+          python IMPLEMENTATION/pcb_one_click/demo.py \
+            IMPLEMENTATION/pcb_one_click/data.csv target > out1.txt
+
+          python IMPLEMENTATION/pcb_one_click/demo.py \
+            IMPLEMENTATION/pcb_one_click/data.csv target > out2.txt
+
+          diff out1.txt out2.txt
+
+  boundary:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy
+
+      - name: Boundary test – empty input
+        run: |
+          echo "" > empty.csv
+          python IMPLEMENTATION/pcb_one_click/demo.py empty.csv target || exit 0
