@@ -1,7 +1,9 @@
 # Causal Safety Engine  
 **Industrial-grade causal discovery and safety certification engine**
 
----
+[![Python application](https://github.com/EM1805/causal-safety-engine/actions/workflows/python-app.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/python-app.yml)
+
+
 
 ## Overview
 
