@@ -1,8 +1,8 @@
 
 """
-CAUSAL SAFETY ENGINE – API v1
-Production-ready FastAPI wrapper
-Safe for Render / Replit / Docker
+CAUSAL SAFETY ENGINE – OFFICIAL API v1 (PRODUCTION-READY)
+Industrial-grade FastAPI wrapper for pcb_one_click demo engine
+Portable: works on Render, GitLab CI, Docker, local
 """
 
 import os
@@ -10,44 +10,47 @@ import uuid
 import shutil
 import subprocess
 import hashlib
-from pathlib import Path
 
-import pandas as pd
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 
-# =====================================================
-# CONFIG
-# =====================================================
+import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
+# ---------------- CONFIG ----------------
 
-ENGINE_PATH = PROJECT_ROOT / "IMPLEMENTATION" / "pcb_one_click" / "demo.py"
-RUNS_DIR = PROJECT_ROOT / "runs"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+ENGINE_PATH = os.getenv(
+    "ENGINE_PATH",
+    os.path.abspath(
+        os.path.join(
+            BASE_DIR,
+            "..",              # IMPLEMENTATION
+            "pcb_one_click",
+            "demo.py"
+        )
+    )
+)
+
+BASE_OUT = os.path.join(BASE_DIR, "runs")
 ENGINE_TIMEOUT = 300  # seconds
 
-RUNS_DIR.mkdir(exist_ok=True)
+os.makedirs(BASE_OUT, exist_ok=True)
 
-if not ENGINE_PATH.exists():
+if not os.path.exists(ENGINE_PATH):
     raise RuntimeError(f"ENGINE NOT FOUND: {ENGINE_PATH}")
 
-# =====================================================
-# APP
-# =====================================================
+# ---------------- APP ----------------
 
 app = FastAPI(
     title="Causal Safety Engine API",
     version="1.1",
-    description="Industrial-grade causal discovery API"
+    description="Industrial-grade API for certified causal discovery"
 )
 
-# =====================================================
-# HELPERS
-# =====================================================
+# ---------------- UTILITIES ----------------
 
-def sha256(path: Path) -> str:
+def file_hash(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -55,35 +58,25 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def parse_edges(path: Path):
+def parse_edges(path):
+    edges = pd.read_csv(path)
+    edges.columns = [c.lower() for c in edges.columns]
+
+    causal = []
+
+    if "to" in edges.columns and "from" in edges.columns:
+        causal = edges[edges["to"] == "target"]["from"].astype(str).tolist()
+    elif "target" in edges.columns and "source" in edges.columns:
+        causal = edges[edges["target"] == "target"]["source"].astype(str).tolist()
+
+    return causal
+
+
+def parse_insights(path):
     df = pd.read_csv(path)
-    df.columns = [c.lower() for c in df.columns]
+    return df.to_dict(orient="records")
 
-    if {"from", "to"}.issubset(df.columns):
-        return (
-            df[df["to"] == "target"]["from"]
-            .astype(str)
-            .str.lower()
-            .tolist()
-        )
-
-    if {"source", "target"}.issubset(df.columns):
-        return (
-            df[df["target"] == "target"]["source"]
-            .astype(str)
-            .str.lower()
-            .tolist()
-        )
-
-    return []
-
-
-def parse_insights(path: Path):
-    return pd.read_csv(path).to_dict(orient="records")
-
-# =====================================================
-# ENDPOINTS
-# =====================================================
+# ---------------- ENDPOINTS ----------------
 
 @app.post("/causal/run")
 async def causal_run(
@@ -91,103 +84,88 @@ async def causal_run(
     target: str = Form(...)
 ):
     run_id = str(uuid.uuid4())
-    run_dir = RUNS_DIR / run_id
-    out_dir = run_dir / "out"
+    run_dir = os.path.join(BASE_OUT, run_id)
+    os.makedirs(run_dir, exist_ok=True)
 
-    run_dir.mkdir(parents=True)
-    out_dir.mkdir()
-
-    # Save dataset
-    data_path = run_dir / "data.csv"
+    data_path = os.path.join(run_dir, "data.csv")
     with open(data_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Validate CSV
+    dataset_hash = file_hash(data_path)
+
     try:
         df = pd.read_csv(data_path)
     except Exception:
-        raise HTTPException(400, "Invalid CSV file")
+        raise HTTPException(status_code=400, detail="Invalid CSV file")
 
     if target not in df.columns:
-        raise HTTPException(400, f"Target '{target}' not in dataset")
+        raise HTTPException(status_code=400, detail="Target column not found")
 
-    dataset_hash = sha256(data_path)
-
-    # Run engine
-    cmd = ["python", str(ENGINE_PATH), str(data_path), target]
+    cmd = ["python", ENGINE_PATH, data_path, target]
 
     try:
         proc = subprocess.run(
             cmd,
-            cwd=run_dir,
             capture_output=True,
             text=True,
-            timeout=ENGINE_TIMEOUT
+            timeout=ENGINE_TIMEOUT,
+            cwd=run_dir
         )
     except subprocess.TimeoutExpired:
-        raise HTTPException(500, "Engine timeout")
+        raise HTTPException(status_code=500, detail="Engine timeout")
 
     if proc.returncode != 0:
-        raise HTTPException(
-            500,
-            f"Engine error:\n{proc.stderr[:600]}"
-        )
+        raise HTTPException(status_code=500, detail=proc.stderr[:500])
 
-    edges_path = out_dir / "edges.csv"
+    out_dir = os.path.join(run_dir, "out")
+    edges_path = os.path.join(out_dir, "edges.csv")
 
-    if not edges_path.exists():
-        raise HTTPException(500, "edges.csv not generated")
+    if not os.path.exists(edges_path):
+        raise HTTPException(status_code=500, detail="edges.csv missing")
 
-    insights_file = None
-    for f in out_dir.iterdir():
-        if f.name.startswith("insights") and f.suffix == ".csv":
-            insights_file = f
+    insights_path = None
+    for f in os.listdir(out_dir):
+        if f.startswith("insights") and f.endswith(".csv"):
+            insights_path = os.path.join(out_dir, f)
 
-    return JSONResponse({
+    response = {
         "status": "ok",
         "run_id": run_id,
+        "engine": "pcb_one_click",
         "target": target,
         "dataset_hash": dataset_hash,
         "causal_variables": parse_edges(edges_path),
-        "insights": parse_insights(insights_file) if insights_file else [],
+        "insights": parse_insights(insights_path) if insights_path else [],
         "artifacts": {
             "edges": f"/causal/artifacts/{run_id}/edges",
             "insights": f"/causal/artifacts/{run_id}/insights"
         }
-    })
+    }
 
-# =====================================================
-# ARTIFACTS
-# =====================================================
+    return JSONResponse(response)
+
 
 @app.get("/causal/artifacts/{run_id}/edges")
 def get_edges(run_id: str):
-    path = RUNS_DIR / run_id / "out" / "edges.csv"
-    if not path.exists():
-        raise HTTPException(404, "edges not found")
+    path = os.path.join(BASE_OUT, run_id, "out", "edges.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404)
     return FileResponse(path, media_type="text/csv")
 
 
 @app.get("/causal/artifacts/{run_id}/insights")
 def get_insights(run_id: str):
-    out_dir = RUNS_DIR / run_id / "out"
-    if not out_dir.exists():
-        raise HTTPException(404, "run not found")
+    out_dir = os.path.join(BASE_OUT, run_id, "out")
+    if not os.path.exists(out_dir):
+        raise HTTPException(status_code=404)
 
-    for f in out_dir.iterdir():
-        if f.name.startswith("insights") and f.suffix == ".csv":
-            return FileResponse(f, media_type="text/csv")
+    for f in os.listdir(out_dir):
+        if f.startswith("insights") and f.endswith(".csv"):
+            return FileResponse(os.path.join(out_dir, f), media_type="text/csv")
 
-    raise HTTPException(404, "insights not found")
+    raise HTTPException(status_code=404)
 
-# =====================================================
-# HEALTH
-# =====================================================
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "engine": "available",
-        "version": "1.1"
-    }
+    return {"status": "ok", "engine": "available"}
