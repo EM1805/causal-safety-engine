@@ -29,6 +29,7 @@ jobs:
     # --------------------------------------------------
     - name: Functional test
       run: |
+        mkdir -p artifacts
         python IMPLEMENTATION/pcb_one_click/demo.py \
           IMPLEMENTATION/pcb_one_click/data.csv target \
           > artifacts/functional_result.txt
