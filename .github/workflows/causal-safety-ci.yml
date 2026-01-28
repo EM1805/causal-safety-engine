@@ -25,14 +25,21 @@ jobs:
         pip install pandas numpy
 
     # --------------------------------------------------
+    # PREPARE ARTIFACT STRUCTURE (IDEMPOTENT)
+    # --------------------------------------------------
+    - name: Prepare artifact directories
+      run: |
+        rm -f artifacts
+        mkdir -p artifacts/{functional,determinism,robustness,boundary,performance}
+
+    # --------------------------------------------------
     # 1. FUNCTIONAL SMOKE TEST
     # --------------------------------------------------
     - name: Functional test
       run: |
-        mkdir -p artifacts
         python IMPLEMENTATION/pcb_one_click/demo.py \
           IMPLEMENTATION/pcb_one_click/data.csv target \
-          > artifacts/functional_result.txt
+          > artifacts/functional/result.txt
 
     # --------------------------------------------------
     # 2. DETERMINISM TEST
@@ -40,14 +47,17 @@ jobs:
     # --------------------------------------------------
     - name: Determinism test
       run: |
-        mkdir -p artifacts/determinism
         for i in 1 2 3; do
           python IMPLEMENTATION/pcb_one_click/demo.py \
             IMPLEMENTATION/pcb_one_click/data.csv target \
             > artifacts/determinism/run_$i.txt
         done
-        sha256sum artifacts/determinism/*.txt > artifacts/determinism/hashes.txt
-        uniq artifacts/determinism/hashes.txt | wc -l | grep 1
+
+        sha256sum artifacts/determinism/run_*.txt \
+          | sort \
+          | uniq \
+          | wc -l \
+          | grep '^1$'
 
     # --------------------------------------------------
     # 3. ROBUSTNESS / PERTURBATION TEST
@@ -55,16 +65,15 @@ jobs:
     - name: Robustness test
       run: |
         python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_safety2.py \
-          > artifacts/robustness_result.txt
+          > artifacts/robustness/result.txt
 
     # --------------------------------------------------
     # 4. BOUNDARY & FAILURE MODE TEST
-    # expected failures must fail cleanly
     # --------------------------------------------------
     - name: Boundary test
       run: |
         python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_causal_stability.py \
-          > artifacts/boundary_result.txt
+          > artifacts/boundary/result.txt
 
     # --------------------------------------------------
     # 5. BASIC PERFORMANCE / SCALING TEST
@@ -72,10 +81,10 @@ jobs:
     - name: Performance test
       run: |
         python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_performance.py \
-          > artifacts/performance_result.txt
+          > artifacts/performance/result.txt
 
     # --------------------------------------------------
-    # ARTIFACTS
+    # UPLOAD ARTIFACTS
     # --------------------------------------------------
     - name: Upload test artifacts
       uses: actions/upload-artifact@v4
