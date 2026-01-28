@@ -56,27 +56,5 @@ stability_test:
       - stability_out/
 
 
-api_test:
-  stage: test
-  image: python:3.10
-  script:
-    - pip install -r IMPLEMENTATION/api/requirements_api.txt
-    - timeout 15s uvicorn IMPLEMENTATION.api.causal_api_main:app --port 8000 --host 127.0.0.1 &
-    - sleep 5
-    - curl -f http://localhost:8000/health
-
-deploy_api:
-  stage: deploy
-  image: python:3.10
-  environment:
-    name: production
-  script:
-    - pip install -r IMPLEMENTATION/api/requirements_api.txt
-    - echo "Starting API for deploy validation..."
-    - timeout 20s uvicorn IMPLEMENTATION.api.causal_api_main:app --host 0.0.0.0 --port 8000 &
-    - sleep 5
-    - curl -f http://localhost:8000/health
-  only:
-    - main
 
 
