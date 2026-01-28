@@ -6,7 +6,7 @@
 [![Regression and Boundary Tests](https://github.com/EM1805/causal-safety-engine/actions/workflows/regression-and-boundary.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/regression-and-boundary.yml)
 [![Causal Engine – Determinism Check](https://github.com/EM1805/causal-safety-engine/actions/workflows/determinism-ci.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/determinism-ci.yml)
 [![Causal Safety Stress Test](https://github.com/EM1805/causal-safety-engine/actions/workflows/causal-safety-stress-ci.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/causal-safety-stress-ci.yml)
-
+[![Functional CI](https://github.com/EM1805/causal-safety-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/ci.yml)
 
 ## Overview
 
