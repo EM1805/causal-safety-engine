@@ -1,16 +1,20 @@
 """
-CAUSAL SILENCE TEST – NO FALSE POSITIVES (RELEASE GATE)
+CAUSAL SILENCE TEST – HIDDEN CONFOUNDER (CLI-BASED)
 
-Purpose:
-Verify that the engine remains causally silent when
-NO valid intervention exists.
+Gold-standard causal safety test.
+
+Goal:
+Verify that the engine remains SILENT when causal effects
+are NOT identifiable due to hidden confounding.
+
+Invocation MUST go through the official CLI.
 
 Allowed:
-- Level 2 exploratory artifacts (non-causal, non-actionable)
-
+- Level 2 exploratory artifacts
 Forbidden:
-- Any promoted causal insight (Level >= 3)
-- Any causal claim or recommendation
+- Level >= 3 causal insights
+- Causal claims
+- Interventions or recommendations
 
 Any violation = FAIL
 """
@@ -24,28 +28,31 @@ import pandas as pd
 # CONFIG
 # --------------------------------------------------
 
-DATA = "IMPLEMENTATION/pcb_one_click/data_no_false_positives.csv"
+DATA = "IMPLEMENTATION/pcb_one_click/data_causal_silence_hidden_confounder.csv"
 OUT_DIR = "IMPLEMENTATION/pcb_one_click/out"
 
-ENGINE_CMD = [
+CLI_CMD = [
     sys.executable,
-    "IMPLEMENTATION/pcb_one_click/demo.py",
-    DATA,
-    "target"
+    "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
+    "run",
+    "--data", DATA,
+    "--target", "target"
 ]
 
 FORBIDDEN_LEVELS = ["level3", "level4"]
 
-FORBIDDEN_WORDS = [
-    "cause",
-    "causal",
+FORBIDDEN_PHRASES = [
     "intervention confirmed",
-    "leads to",
-    "drives",
-    "impact on"
+    "causes ",
+    "is the cause of",
+    "do(",
+    "we recommend",
+    "actionable",
+    "will increase",
+    "will decrease"
 ]
 
-print("\n[CAUSAL SILENCE TEST]")
+print("\n[CAUSAL SILENCE TEST – CLI / HIDDEN CONFOUNDER]")
 print("[INFO] Dataset:", DATA)
 
 # --------------------------------------------------
@@ -62,11 +69,11 @@ else:
     os.makedirs(OUT_DIR, exist_ok=True)
 
 # --------------------------------------------------
-# 2. RUN ENGINE
+# 2. RUN ENGINE VIA CLI
 # --------------------------------------------------
 
 proc = subprocess.run(
-    ENGINE_CMD,
+    CLI_CMD,
     capture_output=True,
     text=True
 )
@@ -80,6 +87,10 @@ FAILED = False
 # 3. CHECK OUTPUT FILES
 # --------------------------------------------------
 
+if not os.path.exists(OUT_DIR):
+    print("[FAIL] Output directory not created")
+    sys.exit(1)
+
 files = os.listdir(OUT_DIR)
 print("[INFO] Output files:", files)
 
@@ -92,11 +103,11 @@ insight_files = [f for f in files if f.startswith("insights_")]
 for f in insight_files:
     for lvl in FORBIDDEN_LEVELS:
         if lvl in f.lower():
-            print(f"[FAIL] Forbidden promoted insight generated: {f}")
+            print(f"[FAIL] Forbidden promoted causal insight generated: {f}")
             FAILED = True
 
 # --------------------------------------------------
-# 5. RULE B — LEVEL 2 ALLOWED BUT NON-ACTIONABLE
+# 5. RULE B — LEVEL 2 EXPLORATION IS ALLOWED
 # --------------------------------------------------
 
 if "insights_level2.csv" in files:
@@ -109,12 +120,12 @@ else:
     print("[OK] No level 2 insights")
 
 # --------------------------------------------------
-# 6. RULE C — NO CAUSAL LANGUAGE
+# 6. RULE C — NO CAUSAL CLAIM LANGUAGE
 # --------------------------------------------------
 
-for word in FORBIDDEN_WORDS:
-    if word in report:
-        print(f"[FAIL] Forbidden causal language found: '{word}'")
+for phrase in FORBIDDEN_PHRASES:
+    if phrase in report:
+        print(f"[FAIL] Forbidden causal claim found in output: '{phrase}'")
         FAILED = True
 
 # --------------------------------------------------
@@ -122,9 +133,9 @@ for word in FORBIDDEN_WORDS:
 # --------------------------------------------------
 
 if FAILED:
-    print("\n❌ CAUSAL SILENCE TEST FAILED")
+    print("\n❌ CAUSAL SILENCE TEST FAILED (CLI / Hidden Confounder)")
     sys.exit(1)
 else:
-    print("\n✅ CAUSAL SILENCE VERIFIED")
-    print("✅ No False Positives under Non-Causal Conditions")
+    print("\n✅ CAUSAL SILENCE VERIFIED (CLI)")
+    print("✅ Engine correctly abstains under non-identifiable causality")
     sys.exit(0)
