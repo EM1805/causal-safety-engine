@@ -1,0 +1,47 @@
+name: Causal Safety – No False Positives
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  no-false-positives:
+    runs-on: ubuntu-latest
+
+    steps:
+    # ---------------------------------------
+    # SETUP
+    # ---------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas numpy
+
+    # ---------------------------------------
+    # NO FALSE POSITIVES STRESS TEST
+    # ---------------------------------------
+    - name: No false positives test
+      run: |
+        python IMPLEMENTATION/pcb_one_click/stress_test/stress_test_no_false_positives.py
+
+    # ---------------------------------------
+    # ARTIFACTS
+    # ---------------------------------------
+    - name: Upload artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: no-false-positives-results
+        path: |
+          stress_result.txt
+          out/
