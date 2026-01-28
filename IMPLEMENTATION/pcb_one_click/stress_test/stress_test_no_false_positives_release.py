@@ -1,99 +1,100 @@
 """
-NO FALSE POSITIVES – RELEASE LEVEL CAUSAL SAFETY TEST
+NO FALSE POSITIVES – CAUSAL SAFETY STRESS TEST (CI / RELEASE GATE)
 
-Definition:
-The engine MUST NOT produce RELEASED causal insights (level 3)
-when no true causal mechanism exists.
+Goal:
+Verify that the engine does NOT promote causal insights when
+the dataset contains only:
+- spurious correlations
+- leakage
+- drift
+- noise
 
-Internal hypotheses (level 2) are allowed.
+Level-2 exploratory artifacts MAY exist.
+Any promoted causal insight = FAIL.
 """
 
-import pandas as pd
-import numpy as np
-import subprocess
-import sys
 import os
-
-np.random.seed(999)
+import sys
+import subprocess
+import pandas as pd
 
 DATA = "IMPLEMENTATION/pcb_one_click/data_no_false_positives.csv"
 OUT_DIR = "IMPLEMENTATION/pcb_one_click/out"
 
+ENGINE_CMD = [
+    sys.executable,
+    "IMPLEMENTATION/pcb_one_click/demo.py",
+    DATA,
+    "mood"
+]
+
+print("\n[NO FALSE POSITIVES TEST]")
+print("[INFO] Using dataset:", DATA)
+
 # --------------------------------------------------
-# 1. GENERATE NON-CAUSAL DATASET
+# 1. CLEAN PREVIOUS OUTPUTS
 # --------------------------------------------------
 
-def generate_dataset(n=3000):
-    noise = np.random.normal(0, 1, n)
-
-    spurious = noise + np.random.normal(0, 0.1, n)
-    leakage = np.roll(noise, -1)
-    leakage[-1] = 0
-    drift = np.concatenate([
-        np.random.normal(0, 1, n // 2),
-        np.random.normal(5, 1, n // 2)
-    ])
-
-    target = noise  # NO causal parents
-
-    return pd.DataFrame({
-        "spurious": spurious,
-        "leakage": leakage,
-        "drift": drift,
-        "target": target
-    })
-
-os.makedirs("IMPLEMENTATION/pcb_one_click", exist_ok=True)
-df = generate_dataset()
-df.to_csv(DATA, index=False)
-
-print("[TEST] Non-causal dataset generated")
+if os.path.exists(OUT_DIR):
+    for f in os.listdir(OUT_DIR):
+        try:
+            os.remove(os.path.join(OUT_DIR, f))
+        except Exception:
+            pass
+else:
+    os.makedirs(OUT_DIR, exist_ok=True)
 
 # --------------------------------------------------
 # 2. RUN ENGINE
 # --------------------------------------------------
 
-cmd = [
-    sys.executable,
-    "IMPLEMENTATION/pcb_one_click/demo.py",
-    DATA,
-    "target"
-]
-
-proc = subprocess.run(cmd, capture_output=True, text=True)
+proc = subprocess.run(ENGINE_CMD, capture_output=True, text=True)
 print(proc.stdout)
 
-# --------------------------------------------------
-# 3. VALIDATION (RELEASE LEVEL)
-# --------------------------------------------------
+report = proc.stdout.lower()
 
 FAILED = False
 
-if os.path.exists(OUT_DIR):
-    files = os.listdir(OUT_DIR)
+# --------------------------------------------------
+# 3. CHECK OUTPUT FILES
+# --------------------------------------------------
 
-    print("[INFO] Output files:")
-    for f in files:
-        print(" -", f)
+files = os.listdir(OUT_DIR)
+print("[INFO] Output files:", files)
 
-    # ❌ ONLY THIS IS FORBIDDEN
-    forbidden = [f for f in files if "insights_level3" in f.lower()]
-
-    if forbidden:
-        print("[FAIL] Released insights detected in non-causal scenario:", forbidden)
-        FAILED = True
-    else:
-        print("[OK] No released insights (level 3) produced")
-else:
-    print("[OK] No output directory created")
+insight_files = [f for f in files if f.startswith("insights_")]
 
 # --------------------------------------------------
-# 4. VERDICT
+# 4. VALIDATION RULES
+# --------------------------------------------------
+
+# Rule A: No promoted causal insights (level >=3)
+for f in insight_files:
+    if "level3" in f or "level4" in f:
+        print("[FAIL] High-level causal insights generated:", f)
+        FAILED = True
+
+# Rule B: Level-2 insights must be empty or guarded
+if "insights_level2.csv" in files:
+    df = pd.read_csv(os.path.join(OUT_DIR, "insights_level2.csv"))
+    if len(df) > 0:
+        print("[INFO] Level-2 exploratory insights detected (allowed)")
+    else:
+        print("[OK] No level-2 insights")
+
+# Rule C: Engine must NOT claim causal certainty
+for bad_word in ["causal", "cause", "intervention confirmed"]:
+    if bad_word in report:
+        print(f"[FAIL] Forbidden causal claim found in output: '{bad_word}'")
+        FAILED = True
+
+# --------------------------------------------------
+# 5. FINAL VERDICT
 # --------------------------------------------------
 
 if FAILED:
-    print("\n❌ NO FALSE POSITIVES (RELEASE LEVEL) FAILED")
+    print("\n❌ NO FALSE POSITIVES TEST FAILED")
     sys.exit(1)
 else:
-    print("\n✅ NO FALSE POSITIVES GUARANTEED AT RELEASE LEVEL")
+    print("\n✅ NO FALSE POSITIVES GUARANTEED")
     sys.exit(0)
