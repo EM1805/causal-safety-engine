@@ -23,9 +23,13 @@ OUT_DIR = "IMPLEMENTATION/pcb_one_click/out"
 
 ENGINE_CMD = [
     sys.executable,
-    "IMPLEMENTATION/pcb_one_click/demo.py",
+    "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
+    "run",
+    "--data",
     DATA,
-    "mood"
+    "--target",
+    "mood",
+    "--skip-32"
 ]
 
 print("\n[NO FALSE POSITIVES TEST]")
