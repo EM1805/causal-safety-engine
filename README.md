@@ -3,7 +3,6 @@
 
 ---
 
-
 ## Overview
 
 **Causal Safety Engine** is an industrial-grade engine for causal discovery and **certification of reliable insights**, designed for enterprise environments, regulated AI systems, and deep-tech startups that require:
