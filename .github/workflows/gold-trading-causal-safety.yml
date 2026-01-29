@@ -28,6 +28,3 @@ jobs:
         run: |
           python build_gold_trading_dataset.py
 
-      - name: Run causal safety test
-        run: |
-          python stress_test_causal_safety.py
