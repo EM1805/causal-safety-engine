@@ -31,5 +31,5 @@ print("Dataset created:", OUTPUT_FILE)
 
 out_path = "runs/data_trading_gold_real.csv"
 os.makedirs("runs", exist_ok=True)
-df.to_csv(out_path, index=False)
+out.to_csv(out_path, index=False)
 print(f"Saved dataset to {out_path}")
