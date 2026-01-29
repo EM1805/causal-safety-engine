@@ -25,6 +25,39 @@ The system is designed as a **causal safety layer** on top of existing AI/ML pip
 
 ---
 
+## Design Principle: Causal Silence
+
+When causal identifiability is insufficient, the engine **intentionally produces no insights**.
+Silence is treated as a correct and safe outcome, not a failure.
+
+---
+
+## Intervention Safety & Action Blocking
+
+The Causal Safety Engine **never authorizes interventions by default**.
+
+Causal discovery and causal action are treated as **strictly separate phases**.
+Even when exploratory or tentative causal signals exist, the engine:
+
+- does **not** recommend actions
+- does **not** generate intervention plans
+- does **not** expose “what-to-do” outputs
+
+Interventions are **explicitly blocked** unless all of the following conditions are met:
+
+- causal identifiability is satisfied
+- robustness and stability tests pass
+- no safety or silence gate is triggered
+- the run is explicitly marked as *intervention-enabled*
+
+When causal certainty is insufficient, the correct and safe behavior is **causal silence**:
+no insights promoted, no actions suggested, no downstream activation.
+
+This design prevents unsafe automation, decision leakage, and premature causal deployment
+in high-stakes or regulated environments.
+
+---
+
 ## Key Capabilities
 
 ### ✔ True Causal Discovery
@@ -165,8 +198,8 @@ The API is designed to run as:
 
 ## Project Status
 
-- Engine: **production-ready**
-- API: **production-grade**
+- Engine: **production-ready reference implementation**
+- API: **production-grade architecture**
 - CI/CD: **fully automated**
 - Safety & stability: **certified via tests**
 
