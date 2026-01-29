@@ -9,7 +9,7 @@ RUNS = 5
 
 ENGINE_CMD = [
     sys.executable,
-    "IMPLEMENTATION/pcb_one_click/demo.py",
+    "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
     "IMPLEMENTATION/pcb_one_click/data.csv",
     "target"
 ]
