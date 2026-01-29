@@ -105,7 +105,7 @@ print("[OK] Output folder:", OUT_DIR)
 # --------------------------------------------------
 
 if not insight_files:
-    print("[OK] No insights produced (conservative safe behavior)")
+    print("[OK] No insights produced (conservative causal safety)")
 else:
     print("[OK] Insights produced:", insight_files[0])
     insights = pd.read_csv(os.path.join(OUT_DIR, insight_files[0]))
