@@ -62,7 +62,7 @@ print("[TEST] Dataset generated")
 
 cmd = [
     sys.executable,
-    "IMPLEMENTATION/pcb_one_click/demo.py",
+    "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
     DATA,
     "target"
 ]
