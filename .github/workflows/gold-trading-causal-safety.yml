@@ -35,21 +35,9 @@ jobs:
       - name: Run causal safety engine on gold dataset
         run: |
           python IMPLEMENTATION/pcb_one_click/demo.py \
-            --data runs/gold/data.csv \
-            --out runs/gold/out
+            --data runs/data_trading_gold_real.csv \
+            --out runs/out
 
-      # 3️⃣ Verifica che l’output esista (fail hard se no)
-      - name: Verify causal outputs
-        run: |
-          test -f runs/gold/out/edges.csv
-          echo "edges.csv OK"
-          ls runs/gold/out
+      
 
-      # 4️⃣ Rende tutto leggibile e scaricabile
-      - name: Upload causal outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: gold-trading-causal-results
-          path: |
-            runs/gold/data.csv
-            runs/gold/out/
+      
