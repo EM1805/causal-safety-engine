@@ -1,25 +1,37 @@
-# License Notice
+# Evaluation & Execution License
 
 © 2026 Emiliano Muharremi. All rights reserved.
 
-## No License Grant
+## Grant of Rights (Limited)
 
-This repository and its contents are provided strictly for
-evaluation, technical review, and due diligence purposes only.
+Permission is hereby granted to any third party to:
 
-No license, express or implied, is granted to use, copy, modify,
-merge, publish, distribute, sublicense, or commercialize this
-software or any derivative work.
+- clone this repository
+- install dependencies
+- execute the software in its unmodified form
 
-## Commercial Use
+**solely for the purposes of:**
+- evaluation
+- technical review
+- benchmarking
+- academic or hackathon judging
 
-Any commercial use, production deployment, redistribution,
-OEM integration, or revenue-generating activity requires a
-separate written agreement with the copyright holder.
+## Restrictions
+
+The following are strictly prohibited without prior written consent from the copyright holder:
+
+- modification of the source code
+- creation of derivative works
+- redistribution or sublicensing
+- commercial use of any kind
+- production deployment
+- integration into other software systems (OEM, SaaS, internal tools)
+
+## No Warranty
+
+This software is provided "as is", without warranty of any kind.
 
 ## Ownership
 
-All intellectual property rights remain exclusively with
-the author.
-
-Unauthorized use is strictly prohibited.
+All intellectual property rights remain exclusively with the author.
+Unauthorized use beyond the scope of this license is strictly prohibited.
