@@ -83,26 +83,22 @@ report = proc.stdout.lower()
 # 3. LOCATE OUTPUT
 # --------------------------------------------------
 
-OUT_DIR = None
-TARGET_FILES = ["edges.csv", "insights_level2.csv"]
+OUT_DIR = "out"
 
-for root, dirs, files in os.walk("."):
-    for f in TARGET_FILES:
-        if f in files:
-            OUT_DIR = root
-            break
-    if OUT_DIR:
-        break
-
-if OUT_DIR is None:
-    print("[FAIL] Output folder not found (no edges / insights)")
+if not os.path.isdir(OUT_DIR):
+    print("[FAIL] Output folder not found")
     sys.exit(1)
 
 print("[OK] Output folder:", OUT_DIR)
 
+FAILED = False
+used_vars = set()
+
 # --------------------------------------------------
-# 4. INSIGHTS (OPTIONAL, NOT MANDATORY)
+# 4. INSIGHTS (OPTIONAL)
 # --------------------------------------------------
+
+insight_files = [f for f in os.listdir(OUT_DIR) if f.startswith("insights_")]
 
 if not insight_files:
     print("[OK] No insights produced (conservative causal safety)")
@@ -110,7 +106,6 @@ else:
     print("[OK] Insights produced:", insight_files[0])
     insights = pd.read_csv(os.path.join(OUT_DIR, insight_files[0]))
 
-    used_vars = set()
     if "source" in insights.columns:
         used_vars = set(insights["source"].astype(str).str.lower())
 
