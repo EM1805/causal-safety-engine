@@ -63,8 +63,9 @@ print("[TEST] Dataset generated")
 cmd = [
     sys.executable,
     "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
-    DATA,
-    "target"
+    "run",
+    "--data",
+    DATA
 ]
 
 print("\n[TEST] Running CAUSAL SAFETY CERTIFICATION...\n")
