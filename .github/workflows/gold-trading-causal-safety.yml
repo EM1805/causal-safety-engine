@@ -31,6 +31,13 @@ jobs:
           echo "Dataset generated:"
           ls -R runs || true
 
+      - name: Debug dataset location
+        run: |
+          echo "PWD:"
+          pwd
+          echo "FIND CSV:"
+          find . -name "*.csv"  
+
       # 2️⃣ Esegue la CLI del Causal Safety Engine
       - name: Run causal safety engine on gold dataset
         run: |
