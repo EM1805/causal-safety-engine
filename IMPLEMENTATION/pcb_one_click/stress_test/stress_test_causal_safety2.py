@@ -83,18 +83,21 @@ report = proc.stdout.lower()
 # --------------------------------------------------
 
 OUT_DIR = None
+TARGET_FILES = ["edges.csv", "insights_level2.csv"]
+
 for root, dirs, files in os.walk("."):
-    if root.endswith("/out") or root.endswith("\\out"):
-        OUT_DIR = root
+    for f in TARGET_FILES:
+        if f in files:
+            OUT_DIR = root
+            break
+    if OUT_DIR:
         break
 
 if OUT_DIR is None:
-    print("[FAIL] Output folder not found")
+    print("[FAIL] Output folder not found (no edges / insights)")
     sys.exit(1)
 
 print("[OK] Output folder:", OUT_DIR)
-
-FAILED = False
 
 # --------------------------------------------------
 # 4. INSIGHTS MUST EXIST
