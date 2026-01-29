@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import os
 
 SYMBOL = "GC=F"
 START_DATE = "2025-01-01"
