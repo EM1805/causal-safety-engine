@@ -1,11 +1,15 @@
+# build_gold_trading_dataset.py
+import os
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import os
 
 SYMBOL = "GC=F"
 START_DATE = "2025-01-01"
-OUTPUT_FILE = "data_trading_gold_real.csv"
+OUT_DIR = "runs"
+OUT_FILE = f"{OUT_DIR}/data_trading_gold_real.csv"
+
+os.makedirs(OUT_DIR, exist_ok=True)
 
 df = yf.download(SYMBOL, start=START_DATE, interval="1d")
 df = df.dropna()
@@ -25,11 +29,7 @@ out = pd.DataFrame({
 })
 
 out = out.dropna()
-out.to_csv(OUTPUT_FILE, index=False)
+out.to_csv(OUT_FILE, index=False)
 
-print("Dataset created:", OUTPUT_FILE)
-
-out_path = "runs/data_trading_gold_real.csv"
-os.makedirs("runs", exist_ok=True)
-out.to_csv(out_path, index=False)
-print(f"Saved dataset to {out_path}")
+print("✅ Dataset created:", OUT_FILE)
+print(out.head())
