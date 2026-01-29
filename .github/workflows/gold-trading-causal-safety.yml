@@ -34,7 +34,7 @@ jobs:
       # 2️⃣ Esegue la CLI del Causal Safety Engine
       - name: Run causal safety engine on gold dataset
         run: |
-          python IMPLEMENTATION/pcb_one_click/demo.py \
+          python IMPLEMENTATION/pcb_one_click/pcb_cli.py \
             --data runs/data_trading_gold_real.csv \
             --out runs/out
 
