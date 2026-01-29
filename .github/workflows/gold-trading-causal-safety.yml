@@ -36,7 +36,7 @@ jobs:
         run: |
           python IMPLEMENTATION/pcb_one_click/pcb_cli.py run \
             --data runs/data_trading_gold_real.csv \
-            --out runs/gold
+            
 
       
 
