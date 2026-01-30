@@ -1,6 +1,6 @@
 # Causal Safety Engine  
 **Industrial-grade causal discovery and safety certification engine**
-
+[![Causal Engine – Stability Certification](https://github.com/EM1805/causal-safety-engine/actions/workflows/stability-ci.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/stability-ci.yml)
 [![Python application](https://github.com/EM1805/causal-safety-engine/actions/workflows/python-app.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/python-app.yml)
 [![Causal Safety Certification](https://github.com/EM1805/causal-safety-engine/actions/workflows/causal-safety-certification.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/causal-safety-certification.yml)
 [![Regression and Boundary Tests](https://github.com/EM1805/causal-safety-engine/actions/workflows/regression-and-boundary.yml/badge.svg)](https://github.com/EM1805/causal-safety-engine/actions/workflows/regression-and-boundary.yml)
