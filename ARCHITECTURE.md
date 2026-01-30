@@ -1,6 +1,6 @@
-# PCB — Architecture
+# Causal safety engine — Architecture
 
-This document describes PCB at a system level (not algorithm internals).
+This document describes Causal safety engine at a system level (not algorithm internals).
 
 ## High-level pipeline
 
