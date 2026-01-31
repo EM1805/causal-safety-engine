@@ -34,7 +34,7 @@ from datetime import datetime
 import pandas as pd
 from pathlib import Path
 
-def _safe_out_path(path, base_dir=OUT_DIR):
+def _safe_out_path(path, base_dir):
     """
     Constrains output paths to base_dir to prevent path traversal.
     """
@@ -379,8 +379,8 @@ def build_exec_summary(title="PCB — Executive Summary", out_html=DEFAULT_OUT_H
 
     html_str = "\n".join(html)
 
-    out_html_path = _safe_out_path(out_html)
-    out_json_path = _safe_out_path(out_json)
+    out_html_path = _safe_out_path(out_html, OUT_DIR)
+    out_json_path = _safe_out_path(out_json, OUT_DIR)
 
     with open(out_html_path, "w", encoding="utf-8") as f:
         f.write(html_str)
