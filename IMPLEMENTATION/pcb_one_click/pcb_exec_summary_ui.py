@@ -32,7 +32,20 @@ import argparse
 from datetime import datetime
 
 import pandas as pd
+from pathlib import Path
 
+def _safe_out_path(path, base_dir=OUT_DIR):
+    """
+    Constrains output paths to base_dir to prevent path traversal.
+    """
+    base = Path(base_dir).resolve()
+    target = Path(path).expanduser().resolve()
+
+    if not str(target).startswith(str(base)):
+        raise ValueError(f"Output path must be inside '{base_dir}/'")
+
+    return target
+  
 OUT_DIR = "out"
 
 DEFAULT_OUT_HTML = os.path.join(OUT_DIR, "executive_summary.html")
@@ -366,10 +379,14 @@ def build_exec_summary(title="PCB — Executive Summary", out_html=DEFAULT_OUT_H
 
     html_str = "\n".join(html)
 
-    with open(out_html, "w", encoding="utf-8") as f:
+    out_html_path = _safe_out_path(out_html)
+    out_json_path = _safe_out_path(out_json)
+
+    with open(out_html_path, "w", encoding="utf-8") as f:
         f.write(html_str)
-    with open(out_json, "w", encoding="utf-8") as f:
-        json.dump(summary_json, f, ensure_ascii=False, indent=2)
+
+    with open(out_json_path, "w", encoding="utf-8") as f:
+        json.dump(summary_json, f, ensure_ascii=False, indent=2) 
 
     return out_html, out_json
 
