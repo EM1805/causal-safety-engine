@@ -1,6 +1,6 @@
-# Causal safety engine — Architecture
+# Causal Safety Engine — Architecture
 
-This document describes Causal safety engine at a system level (not algorithm internals).
+This document describes Causal Safety Engine at a system level (not algorithm internals).
 
 ## High-level pipeline
 
