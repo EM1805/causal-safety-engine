@@ -1,9 +1,8 @@
-# PCB — Artifact Manifest
+# Causal Safety Engine — Artifact Manifest
 
-This document describes PCB artifacts, their meaning, and intended use.
+This document describes Causal Safety Engine artifacts, their meaning, and intended use.
 Artifacts are written under:
-- `CANONICAL/src/out/`
-- `CANONICAL/pcb_one_click/out/`
+- `IMPLEMENTATION/pcb_one_click/out/`
 
 ## Core discovery & profiling
 | Artifact | Description | Intended use |
