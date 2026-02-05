@@ -1,6 +1,6 @@
-# PCB — Reproducibility
+# Causal Safety Engine — Reproducibility
 
-PCB aims to be reproducible, but reproducibility depends on:
+Causal Safety Engine aims to be reproducible, but reproducibility depends on:
 1) configuration/seeds, and
 2) dependency versions.
 
