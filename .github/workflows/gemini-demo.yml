@@ -26,6 +26,7 @@ jobs:
 
       - name: Prepare output directory
         run: mkdir -p out
+        
 
       - name: Run Gemini governed agent
         env:
