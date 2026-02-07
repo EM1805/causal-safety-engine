@@ -1,65 +1,64 @@
 """
-Gemini-governed agent for Causal Safety Engine
+Gemini-governed proposal agent.
 
-Gemini:
-- generates ACTION PROPOSALS only
-- never executes
-- never decides
+Role separation (STRICT):
+- Gemini: proposes ONE conservative action (JSON only)
+- Causal Safety Engine (PCB CLI): validates, decides, executes
 
-Causal Safety Engine:
-- evaluates
-- decides ALLOW / BLOCK / SILENCE
+Gemini has:
+- no execution authority
+- no policy authority
+- no override capability
 """
 
-import os
+from __future__ import annotations
+
 import json
+import os
+from typing import Dict
+
 import google.generativeai as genai
 
-from gemini_adapter import evaluate_with_causal_engine
+from gemini_adapter import evaluate_with_causal_engine, normalize_proposal
 
 
-# -------------------------------------------------------------------
-# 1. Configure Gemini safely (API key from env)
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Model selection
+# ---------------------------------------------------------------------
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("GEMINI_API_KEY environment variable not set")
-
-genai.configure(api_key=API_KEY)
-
-
-# -------------------------------------------------------------------
-# 2. Select a VALID model dynamically (no hardcoded names)
-# -------------------------------------------------------------------
-
-def get_text_generation_model() -> genai.GenerativeModel:
+def get_model() -> genai.GenerativeModel:
     """
-    Selects the first Gemini model that supports generateContent.
-    This avoids all 404 / version / availability issues.
+    Select a valid Gemini model.
+
+    Priority:
+    1. GEMINI_MODEL env var (if set)
+    2. First model supporting generateContent
     """
-    for m in genai.list_models():
-        if "generateContent" in m.supported_generation_methods:
-            return genai.GenerativeModel(m.name)
+    preferred = os.getenv("GEMINI_MODEL")
+    if preferred:
+        return genai.GenerativeModel(preferred)
+
+    for model_info in genai.list_models():
+        if "generateContent" in model_info.supported_generation_methods:
+            return genai.GenerativeModel(model_info.name)
 
     raise RuntimeError("No Gemini model supports generateContent")
 
 
-model = get_text_generation_model()
+# ---------------------------------------------------------------------
+# Defensive JSON extraction
+# ---------------------------------------------------------------------
 
-
-# -------------------------------------------------------------------
-# 3. Defensive JSON extraction (LLMs are never trusted)
-# -------------------------------------------------------------------
-
-def extract_json(text: str) -> dict:
+def extract_json(text: str) -> Dict:
     """
-    Extracts the first valid JSON object from Gemini output.
-    Handles markdown fences and extra text safely.
+    Extract the first JSON object from Gemini output.
+
+    Handles:
+    - markdown fences
+    - leading/trailing text
     """
     text = text.strip()
 
-    # Remove ``` blocks if present
     if text.startswith("```"):
         parts = text.split("```")
         if len(parts) >= 2:
@@ -71,14 +70,58 @@ def extract_json(text: str) -> dict:
     if start == -1 or end == -1:
         raise ValueError("No JSON object found in Gemini output")
 
-    return json.loads(text[start:end + 1])
+    return json.loads(text[start : end + 1])
 
 
-# -------------------------------------------------------------------
-# 4. Observational context (from CSV, sensors, etc.)
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Prompt construction
+# ---------------------------------------------------------------------
 
-context = """
+def build_prompt(context: str) -> str:
+    """
+    Build a STRICT JSON-only prompt.
+    """
+    return f"""
+You must output ONLY a valid JSON object.
+No markdown. No explanations. No extra text.
+
+Context:
+{context}
+
+Rules:
+- Propose exactly ONE conservative action
+- If stress is high, DO NOT increase activity
+- Use small numeric deltas only
+
+JSON schema:
+{{
+  "action": "adjust_features",
+  "params": {{
+    "deltas": {{
+      "activity": number,
+      "stress": number,
+      "sleep": number
+    }}
+  }},
+  "rationale": "string"
+}}
+"""
+
+
+# ---------------------------------------------------------------------
+# Main agent loop
+# ---------------------------------------------------------------------
+
+def main() -> None:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY environment variable not set")
+
+    genai.configure(api_key=api_key)
+    model = get_model()
+
+    # Observational context (could come from CSV, sensors, API, etc.)
+    context = """
 User metrics summary:
 - mood: low
 - stress: high
@@ -86,64 +129,30 @@ User metrics summary:
 - sleep: good
 """
 
+    response = model.generate_content(build_prompt(context))
 
-# -------------------------------------------------------------------
-# 5. STRICT JSON-only prompt (still parsed defensively)
-# -------------------------------------------------------------------
+    try:
+        raw_proposal = extract_json(response.text)
+        proposal = normalize_proposal(raw_proposal)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Invalid JSON proposal from Gemini:\n{response.text}"
+        ) from exc
 
-prompt = f"""
-You are a system that outputs ONLY valid JSON.
-No markdown. No explanations. No text outside JSON.
+    verdict = evaluate_with_causal_engine(
+        proposal=proposal,
+        data_path="IMPLEMENTATION/pcb_one_click/data.csv",
+    )
 
-Context:
-{context}
+    print("\n=== Gemini proposal ===")
+    print(json.dumps(proposal, indent=2))
 
-Rules:
-- Propose exactly ONE action
-- Be conservative
-- If stress is high, DO NOT increase activity
-
-JSON schema:
-{{
-  "action": "string",
-  "params": {{
-    "delta": number
-  }},
-  "rationale": "string"
-}}
-"""
+    print("\n=== Causal verdict ===")
+    print(json.dumps(
+        {k: v for k, v in verdict.items() if k != "proposal"},
+        indent=2
+    ))
 
 
-# -------------------------------------------------------------------
-# 6. Gemini proposal (proposal-only role)
-# -------------------------------------------------------------------
-
-response = model.generate_content(prompt)
-
-try:
-    proposal = extract_json(response.text)
-except Exception as e:
-    raise RuntimeError(
-        f"Invalid JSON from Gemini:\n{response.text}"
-    ) from e
-
-
-# -------------------------------------------------------------------
-# 7. SAFETY-FIRST evaluation (engine decides, not Gemini)
-# -------------------------------------------------------------------
-
-verdict = evaluate_with_causal_engine(
-    proposal=proposal,
-    data_path="IMPLEMENTATION/pcb_one_click/data.csv",
-)
-
-
-# -------------------------------------------------------------------
-# 8. Output (audit-friendly)
-# -------------------------------------------------------------------
-
-print("\n=== Gemini proposal ===")
-print(json.dumps(proposal, indent=2))
-
-print("\n=== Causal verdict ===")
-print(json.dumps(verdict, indent=2))
+if __name__ == "__main__":
+    main()
