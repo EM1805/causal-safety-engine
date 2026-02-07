@@ -1,14 +1,36 @@
 ## Gemini Integration (Safety-Governed)
 
-Gemini is used exclusively as an action proposal generator.
+This integration connects **Gemini** to the **Causal Safety Engine** in a
+**strictly governed, safety-first** manner.
 
-All proposed actions are deterministically evaluated by the
-Causal Safety Engine before execution.
+Gemini is used **only** to generate a **proposal JSON**.
+It never executes actions and never makes decisions.
+
+The **deterministic Causal Safety Engine (PCB CLI)** is the sole authority that:
+- evaluates proposals
+- enforces causal guardrails
+- decides whether an action is allowed, blocked, or silenced
 
 Gemini has:
-- no access to execution
-- no access to policy
-- no ability to override decisions
+- no execution privileges
+- no policy access
+- no ability to override engine decisions
 
-This integration demonstrates agent governance,
-not autonomous decision-making.
+---
+
+### Canonical proposal schema
+
+All proposals are normalized to the following canonical schema before evaluation:
+
+```json
+{
+  "action": "adjust_features",
+  "params": {
+    "deltas": {
+      "activity": -0.2,
+      "stress": -0.3,
+      "sleep": 0.1
+    }
+  },
+  "rationale": "short explanation"
+}
