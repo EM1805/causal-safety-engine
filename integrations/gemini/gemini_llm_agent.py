@@ -1,3 +1,4 @@
+import os
 import google.generativeai as genai
 import json
 from gemini_adapter import evaluate_with_causal_engine
