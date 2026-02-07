@@ -64,8 +64,11 @@ def evaluate_with_causal_engine(
     if result.returncode != 0:
         raise GeminiProposalError(result.stderr)
 
-    # 3. Read deterministic Level 3 verdict
-    with open("out/insights_level3.json") as f:
-        decision = json.load(f)
+    if result.returncode != 0:
+    raise GeminiProposalError(result.stderr)
 
-    return decision
+    return {
+        "status": "EXECUTED",
+        "engine_stdout": result.stdout.strip(),
+    }
+}
