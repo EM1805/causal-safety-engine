@@ -22,18 +22,22 @@ from gemini_adapter import evaluate_with_causal_engine
 # 1. Configure Gemini safely (API key from env)
 # -------------------------------------------------------------------
 
-if "GEMINI_API_KEY" not in os.environ:
+API_KEY = os.getenv("GEMINI_API_KEY")
+if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+genai.configure(api_key=API_KEY)
 
 
 # -------------------------------------------------------------------
-# 2. Select a VALID model dynamically
-#    (avoid 404s forever)
+# 2. Select a VALID model dynamically (no hardcoded names)
 # -------------------------------------------------------------------
 
 def get_text_generation_model() -> genai.GenerativeModel:
+    """
+    Selects the first Gemini model that supports generateContent.
+    This avoids all 404 / version / availability issues.
+    """
     for m in genai.list_models():
         if "generateContent" in m.supported_generation_methods:
             return genai.GenerativeModel(m.name)
@@ -45,7 +49,33 @@ model = get_text_generation_model()
 
 
 # -------------------------------------------------------------------
-# 3. Observational context (can come from CSV, sensors, etc.)
+# 3. Defensive JSON extraction (LLMs are never trusted)
+# -------------------------------------------------------------------
+
+def extract_json(text: str) -> dict:
+    """
+    Extracts the first valid JSON object from Gemini output.
+    Handles markdown fences and extra text safely.
+    """
+    text = text.strip()
+
+    # Remove ``` blocks if present
+    if text.startswith("```"):
+        parts = text.split("```")
+        if len(parts) >= 2:
+            text = parts[1]
+
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start == -1 or end == -1:
+        raise ValueError("No JSON object found in Gemini output")
+
+    return json.loads(text[start:end + 1])
+
+
+# -------------------------------------------------------------------
+# 4. Observational context (from CSV, sensors, etc.)
 # -------------------------------------------------------------------
 
 context = """
@@ -58,11 +88,11 @@ User metrics summary:
 
 
 # -------------------------------------------------------------------
-# 4. STRICT JSON-only prompt
+# 5. STRICT JSON-only prompt (still parsed defensively)
 # -------------------------------------------------------------------
 
 prompt = f"""
-You are a system that ONLY outputs valid JSON.
+You are a system that outputs ONLY valid JSON.
 No markdown. No explanations. No text outside JSON.
 
 Context:
@@ -85,19 +115,21 @@ JSON schema:
 
 
 # -------------------------------------------------------------------
-# 5. Gemini proposal
+# 6. Gemini proposal (proposal-only role)
 # -------------------------------------------------------------------
 
 response = model.generate_content(prompt)
 
 try:
-    proposal = json.loads(response.text)
-except json.JSONDecodeError as e:
-    raise RuntimeError(f"Invalid JSON from Gemini:\n{response.text}") from e
+    proposal = extract_json(response.text)
+except Exception as e:
+    raise RuntimeError(
+        f"Invalid JSON from Gemini:\n{response.text}"
+    ) from e
 
 
 # -------------------------------------------------------------------
-# 6. SAFETY-FIRST evaluation (your engine decides)
+# 7. SAFETY-FIRST evaluation (engine decides, not Gemini)
 # -------------------------------------------------------------------
 
 verdict = evaluate_with_causal_engine(
@@ -107,7 +139,7 @@ verdict = evaluate_with_causal_engine(
 
 
 # -------------------------------------------------------------------
-# 7. Output
+# 8. Output (audit-friendly)
 # -------------------------------------------------------------------
 
 print("\n=== Gemini proposal ===")
