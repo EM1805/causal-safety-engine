@@ -9,7 +9,7 @@ gemini_proposal = {
 
 verdict = evaluate_with_causal_engine(
     proposal=gemini_proposal,
-    data_path="data/observational.csv",
+    data_path="data.csv",
 )
 
 print("Causal verdict:", verdict)
