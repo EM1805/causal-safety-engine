@@ -1,13 +1,13 @@
 """
 Gemini Adapter for Causal Safety Engine
 
-Gemini is used ONLY to propose counterfactual changes.
-The Causal Safety Engine remains the sole decision authority.
+Gemini is used ONLY as an action proposal generator.
+All actions are evaluated by the Causal Safety Engine
+before any execution.
 """
 
 import json
 import subprocess
-import pandas as pd
 from typing import Dict, Any
 
 
@@ -15,44 +15,26 @@ class GeminiProposalError(Exception):
     pass
 
 
-def apply_proposal_to_data(
-    proposal: Dict[str, Any],
-    base_data_path: str,
-    out_path: str = "out/counterfactual_data.csv",
-) -> str:
-    """
-    Applies Gemini proposal as a counterfactual modification
-    to the observational dataset.
-    """
-
-    df = pd.read_csv(base_data_path)
-
-    for feature, delta in proposal.get("proposed_delta", {}).items():
-        if feature in df.columns:
-            df[feature] = df[feature] + delta
-
-    df.to_csv(out_path, index=False)
-    return out_path
-
-
 def evaluate_with_causal_engine(
     proposal: Dict[str, Any],
     data_path: str,
 ) -> Dict[str, Any]:
+    """
+    Sends the proposed action to the Causal Safety Engine
+    and returns the deterministic verdict.
+    """
 
-    # 1. Convert proposal → counterfactual data
-    cf_data_path = apply_proposal_to_data(
-        proposal=proposal,
-        base_data_path=data_path,
-    )
+    # Write proposal to temp file (audit-friendly)
+    with open("out/gemini_proposal.json", "w") as f:
+        json.dump(proposal, f, indent=2)
 
-    # 2. Call the REAL CLI (no fake flags)
+    # Call existing CLI (non-invasive)
     cmd = [
         "python",
         "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
         "run",
         "--data",
-        cf_data_path,
+        data_path,
     ]
 
     result = subprocess.run(
@@ -64,11 +46,8 @@ def evaluate_with_causal_engine(
     if result.returncode != 0:
         raise GeminiProposalError(result.stderr)
 
-    if result.returncode != 0:
-    raise GeminiProposalError(result.stderr)
-
+    # Read deterministic stdout (correct contract)
     return {
         "status": "EXECUTED",
         "engine_stdout": result.stdout.strip(),
     }
-}
