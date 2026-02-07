@@ -1,19 +1,34 @@
-name: Gemini Adapter Demo
+name: Gemini Safety-Governed Demo
 
-on: [push]
+on:
+  workflow_dispatch:   # esecuzione manuale (consigliato)
+  push:
+    paths:
+      - "integrations/gemini/**"
 
 jobs:
-  demo:
+  gemini-demo:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      - run: pip install pandas
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pandas google-generativeai
 
-      - run: mkdir -p out
+      - name: Prepare output directory
+        run: mkdir -p out
 
-      - run: python integrations/gemini/gemini_demo_agent.py
+      - name: Run Gemini governed agent
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python integrations/gemini/gemini_llm_agent.py
