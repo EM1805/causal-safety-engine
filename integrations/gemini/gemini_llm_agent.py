@@ -5,7 +5,7 @@ from gemini_adapter import evaluate_with_causal_engine
 
 # --- Setup Gemini ---
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("gemini-1.0-pro")
 
 # --- Input osservazionale (può venire dal CSV, sensori, ecc.) ---
 context = """
