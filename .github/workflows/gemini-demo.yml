@@ -1,35 +1,32 @@
-name: Gemini Safety-Governed Demo
+name: Gemini + Causal Safety Demo
 
 on:
-  workflow_dispatch:   # esecuzione manuale (consigliato)
-  push:
-    paths:
-      - "integrations/gemini/**"
+  workflow_dispatch:
 
 jobs:
-  gemini-demo:
+  run-demo:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install pandas google-generativeai
+          pip install -r requirements.txt
 
-      - name: Prepare output directory
-        run: mkdir -p out
-        
-
-      - name: Run Gemini governed agent
+      - name: Run Gemini-governed agent
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python integrations/gemini/gemini_llm_agent.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: causal-safety-artifacts
+          path: out/
