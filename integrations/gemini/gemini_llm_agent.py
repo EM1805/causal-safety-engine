@@ -1,21 +1,24 @@
 """
-Gemini-governed proposal agent.
+Gemini-governed proposal agent for the Causal Safety Engine.
 
-Role separation (STRICT):
-- Gemini: proposes ONE conservative action (JSON only)
-- Causal Safety Engine (PCB CLI): validates, decides, executes
+STRICT role separation:
 
-Gemini has:
-- no execution authority
-- no policy authority
-- no override capability
+- Gemini:
+  - generates ONE conservative action proposal
+  - outputs JSON only
+  - has no execution or policy authority
+
+- Causal Safety Engine (PCB CLI):
+  - validates proposals
+  - enforces causal guardrails
+  - decides ALLOW / BLOCK / SILENCE
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Dict
+from typing import Any, Dict
 
 import google.generativeai as genai
 
@@ -23,64 +26,92 @@ from gemini_adapter import evaluate_with_causal_engine, normalize_proposal
 
 
 # ---------------------------------------------------------------------
-# Model selection
+# Environment configuration
+# ---------------------------------------------------------------------
+
+GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
+GEMINI_MODEL_ENV = "GEMINI_MODEL"
+
+REQUIRED_MODEL_PREFIX = "gemini-3"
+DEFAULT_DATA_PATH = "IMPLEMENTATION/pcb_one_click/data.csv"
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+
+def _require_env(var_name: str) -> str:
+    """Read a required environment variable or fail fast."""
+    value = os.getenv(var_name, "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {var_name}")
+    return value
+
+
+def _normalize_model_name(model_name: str) -> str:
+    """Remove optional 'models/' prefix from Gemini model names."""
+    return model_name.removeprefix("models/")
+
+
+# ---------------------------------------------------------------------
+# Gemini model selection (explicit + constrained)
 # ---------------------------------------------------------------------
 
 def get_model() -> genai.GenerativeModel:
     """
-    Select a valid Gemini model.
+    Return a configured Gemini model.
 
-    Priority:
-    1. GEMINI_MODEL env var (if set)
-    2. First model supporting generateContent
+    Constraints:
+    - Model must be explicitly provided via GEMINI_MODEL
+    - Only Gemini 3 family models are allowed
     """
-    preferred = os.getenv("GEMINI_MODEL")
-    if preferred:
-        return genai.GenerativeModel(preferred)
+    model_name = _require_env(GEMINI_MODEL_ENV)
+    normalized = _normalize_model_name(model_name)
 
-    for model_info in genai.list_models():
-        if "generateContent" in model_info.supported_generation_methods:
-            return genai.GenerativeModel(model_info.name)
+    if not normalized.startswith(REQUIRED_MODEL_PREFIX):
+        raise RuntimeError(
+            f"{GEMINI_MODEL_ENV} must target Gemini 3 family, got: {model_name}"
+        )
 
-    raise RuntimeError("No Gemini model supports generateContent")
+    return genai.GenerativeModel(model_name)
 
 
 # ---------------------------------------------------------------------
 # Defensive JSON extraction
 # ---------------------------------------------------------------------
 
-def extract_json(text: str) -> Dict:
+def extract_json(text: str) -> Dict[str, Any]:
     """
-    Extract the first JSON object from Gemini output.
+    Extract the first valid JSON object from model output.
 
-    Handles:
+    Defends against:
     - markdown fences
-    - leading/trailing text
+    - extra text before/after JSON
     """
-    text = text.strip()
+    cleaned = text.strip()
 
-    if text.startswith("```"):
-        parts = text.split("```")
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
         if len(parts) >= 2:
-            text = parts[1]
+            cleaned = parts[1].strip()
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:].lstrip()
 
-    start = text.find("{")
-    end = text.rfind("}")
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
 
-    if start == -1 or end == -1:
-        raise ValueError("No JSON object found in Gemini output")
+    if start == -1 or end == -1 or end < start:
+        raise ValueError("No valid JSON object found in Gemini output")
 
-    return json.loads(text[start : end + 1])
+    return json.loads(cleaned[start : end + 1])
 
 
 # ---------------------------------------------------------------------
-# Prompt construction
+# Prompt construction (proposal-only)
 # ---------------------------------------------------------------------
 
 def build_prompt(context: str) -> str:
-    """
-    Build a STRICT JSON-only prompt.
-    """
+    """Build a strict JSON-only prompt for proposal generation."""
     return f"""
 You must output ONLY a valid JSON object.
 No markdown. No explanations. No extra text.
@@ -109,18 +140,17 @@ JSON schema:
 
 
 # ---------------------------------------------------------------------
-# Main agent loop
+# Main agent flow
 # ---------------------------------------------------------------------
 
 def main() -> None:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY environment variable not set")
-
+    """Run Gemini proposal flow and submit it to the causal safety layer."""
+    api_key = _require_env(GEMINI_API_KEY_ENV)
     genai.configure(api_key=api_key)
+
     model = get_model()
 
-    # Observational context (could come from CSV, sensors, API, etc.)
+    # Observational context (can be loaded from CSV, sensors, API, etc.)
     context = """
 User metrics summary:
 - mood: low
@@ -136,22 +166,19 @@ User metrics summary:
         proposal = normalize_proposal(raw_proposal)
     except Exception as exc:
         raise RuntimeError(
-            f"Invalid JSON proposal from Gemini:\n{response.text}"
+            f"Invalid proposal returned by Gemini:\n{response.text}"
         ) from exc
 
     verdict = evaluate_with_causal_engine(
         proposal=proposal,
-        data_path="IMPLEMENTATION/pcb_one_click/data.csv",
+        data_path=DEFAULT_DATA_PATH,
     )
 
     print("\n=== Gemini proposal ===")
     print(json.dumps(proposal, indent=2))
 
     print("\n=== Causal verdict ===")
-    print(json.dumps(
-        {k: v for k, v in verdict.items() if k != "proposal"},
-        indent=2
-    ))
+    print(json.dumps({k: v for k, v in verdict.items() if k != "proposal"}, indent=2))
 
 
 if __name__ == "__main__":
