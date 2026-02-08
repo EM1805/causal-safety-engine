@@ -1,8 +1,9 @@
 """
 Gemini adapter for the Causal Safety Engine.
 
-Design contract:
-- Gemini can ONLY propose actions.
+DESIGN CONTRACT
+---------------
+- Gemini can ONLY propose actions (JSON).
 - The deterministic PCB CLI is the sole execution authority.
 - Every proposal is validated, normalized, and persisted for auditability.
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 
@@ -28,11 +30,37 @@ class GeminiEngineError(Exception):
 
 
 # ---------------------------------------------------------------------
-# Helpers
+# Repository helpers
 # ---------------------------------------------------------------------
 
+def _repo_root() -> Path:
+    """
+    Resolve repository root.
+
+    integrations/gemini/gemini_adapter.py
+    -> parents[2] == repo root
+    """
+    return Path(__file__).resolve().parents[2]
+
+
+def _out_dir() -> Path:
+    return _repo_root() / "out"
+
+
 def _ensure_out_dir() -> None:
-    os.makedirs("out", exist_ok=True)
+    _out_dir().mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_input_path(path: str) -> str:
+    """
+    Resolve a path relative to repo root if not absolute.
+    """
+    candidate = Path(path)
+    if candidate.is_absolute() or candidate.exists():
+        return str(candidate)
+
+    repo_candidate = _repo_root() / candidate
+    return str(repo_candidate)
 
 
 def _is_number(value: Any) -> bool:
@@ -58,23 +86,17 @@ def normalize_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
       "rationale": "string"
     }
 
-    Backward-compatible legacy input:
+    Legacy compatibility supported:
     {
-      "proposed_delta": {
-        "feature_name": number
-      },
-      "rationale": "string"
+      "proposed_delta": { "feature": number }
     }
     """
     if not isinstance(proposal, dict):
-        raise GeminiProposalError("proposal must be a JSON object")
+        raise GeminiProposalError("proposal must be an object")
 
-    # ------------------------------------------------------------
-    # Legacy compatibility path
-    # ------------------------------------------------------------
+    # ---- Legacy payload support
     if "proposed_delta" in proposal:
         deltas = proposal.get("proposed_delta")
-
         if not isinstance(deltas, dict) or not deltas:
             raise GeminiProposalError("proposal.proposed_delta must be a non-empty object")
 
@@ -86,7 +108,7 @@ def normalize_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
                 raise GeminiProposalError(f"delta '{key}' must be numeric")
             canonical_deltas[key.strip()] = float(value)
 
-        rationale = proposal.get("rationale", "legacy proposal normalized")
+        rationale = proposal.get("rationale", "legacy payload normalized")
         if not isinstance(rationale, str):
             raise GeminiProposalError("proposal.rationale must be a string")
 
@@ -96,9 +118,7 @@ def normalize_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
             "rationale": rationale.strip(),
         }
 
-    # ------------------------------------------------------------
-    # Canonical schema path
-    # ------------------------------------------------------------
+    # ---- Canonical payload
     action = proposal.get("action")
     params = proposal.get("params")
     rationale = proposal.get("rationale", "")
@@ -130,7 +150,7 @@ def normalize_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------
-# Engine invocation
+# Engine invocation (deterministic boundary)
 # ---------------------------------------------------------------------
 
 def evaluate_with_causal_engine(
@@ -140,30 +160,32 @@ def evaluate_with_causal_engine(
     config_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Validate and normalize a Gemini proposal, invoke the PCB CLI,
+    Validate + normalize a Gemini proposal, invoke the PCB CLI,
     and return the deterministic engine result.
     """
     canonical_proposal = normalize_proposal(proposal)
     _ensure_out_dir()
 
-    # Persist proposal (audit-first)
-    proposal_path = "out/gemini_proposal.json"
-    with open(proposal_path, "w", encoding="utf-8") as f:
+    # ---- Persist proposal (audit-first)
+    proposal_path = _out_dir() / "gemini_proposal.json"
+    with proposal_path.open("w", encoding="utf-8") as f:
         json.dump(canonical_proposal, f, indent=2)
 
-    # Build PCB CLI command
+    # ---- Build PCB CLI command
+    cli_path = _repo_root() / "IMPLEMENTATION" / "pcb_one_click" / "pcb_cli.py"
+
     cmd = [
         "python",
-        "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
+        str(cli_path),
         "run",
         "--data",
-        data_path,
+        _resolve_input_path(data_path),
     ]
 
     if config_path:
-        cmd.extend(["--config", config_path])
+        cmd.extend(["--config", _resolve_input_path(config_path)])
 
-    # Execute deterministically
+    # ---- Execute deterministically
     try:
         result = subprocess.run(
             cmd,
@@ -172,29 +194,31 @@ def evaluate_with_causal_engine(
             timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired as exc:
-        raise GeminiEngineError(f"engine timeout after {timeout_seconds}s") from exc
+        raise GeminiEngineError(
+            f"engine timeout after {timeout_seconds}s"
+        ) from exc
 
-    # Persist audit record
-    audit_path = "out/gemini_audit_record.json"
+    # ---- Persist audit record
+    audit_path = _out_dir() / "gemini_audit_record.json"
     audit_record = {
         "command": cmd,
         "timeout_seconds": timeout_seconds,
         "returncode": result.returncode,
         "stderr": result.stderr.strip(),
-        "proposal_path": proposal_path,
+        "proposal_path": str(proposal_path),
     }
 
-    with open(audit_path, "w", encoding="utf-8") as f:
+    with audit_path.open("w", encoding="utf-8") as f:
         json.dump(audit_record, f, indent=2)
 
     if result.returncode != 0:
         raise GeminiEngineError(result.stderr.strip() or "causal engine failed")
 
-    # Engine stdout is the authoritative result
+    # ---- Authoritative output
     return {
         "status": "ENGINE_EXECUTED",
         "proposal": canonical_proposal,
-        "proposal_path": proposal_path,
-        "audit_record_path": audit_path,
+        "proposal_path": str(proposal_path),
+        "audit_record_path": str(audit_path),
         "engine_stdout": result.stdout.strip(),
     }
