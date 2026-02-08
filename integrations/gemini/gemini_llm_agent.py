@@ -1,17 +1,20 @@
 """
-Gemini-governed proposal agent for the Causal Safety Engine.
+Gemini-governed proposal agent (Gemini 3).
 
-STRICT role separation:
+STRICT ROLE SEPARATION
+---------------------
+Gemini 3:
+- generates ONE conservative action proposal
+- outputs JSON ONLY
+- has NO execution authority
+- has NO policy authority
 
-- Gemini:
-  - generates ONE conservative action proposal
-  - outputs JSON only
-  - has no execution or policy authority
+Causal Safety Engine (PCB CLI):
+- validates proposal
+- decides (ALLOW / BLOCK / SILENCE)
+- executes deterministically
 
-- Causal Safety Engine (PCB CLI):
-  - validates proposals
-  - enforces causal guardrails
-  - decides ALLOW / BLOCK / SILENCE
+This file implements the proposer side only.
 """
 
 from __future__ import annotations
@@ -20,73 +23,64 @@ import json
 import os
 from typing import Any, Dict
 
-import google.generativeai as genai
+from google import genai
 
 from gemini_adapter import evaluate_with_causal_engine, normalize_proposal
 
 
 # ---------------------------------------------------------------------
-# Environment configuration
+# Configuration (fail fast)
 # ---------------------------------------------------------------------
 
 GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
 GEMINI_MODEL_ENV = "GEMINI_MODEL"
 
-REQUIRED_MODEL_PREFIX = "gemini-3"
 DEFAULT_DATA_PATH = "IMPLEMENTATION/pcb_one_click/data.csv"
 
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
-
-def _require_env(var_name: str) -> str:
-    """Read a required environment variable or fail fast."""
-    value = os.getenv(var_name, "").strip()
+def _require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
     if not value:
-        raise RuntimeError(f"Missing required environment variable: {var_name}")
+        raise RuntimeError(f"Missing required environment variable: {name}")
     return value
 
 
-def _normalize_model_name(model_name: str) -> str:
-    """Remove optional 'models/' prefix from Gemini model names."""
-    return model_name.removeprefix("models/")
-
-
 # ---------------------------------------------------------------------
-# Gemini model selection (explicit + constrained)
+# Gemini 3 client
 # ---------------------------------------------------------------------
 
-def get_model() -> genai.GenerativeModel:
-    """
-    Return a configured Gemini model.
+def get_client() -> genai.Client:
+    api_key = _require_env(GEMINI_API_KEY_ENV)
+    return genai.Client(api_key=api_key)
 
-    Constraints:
-    - Model must be explicitly provided via GEMINI_MODEL
-    - Only Gemini 3 family models are allowed
-    """
-    model_name = _require_env(GEMINI_MODEL_ENV)
-    normalized = _normalize_model_name(model_name)
 
-    if not normalized.startswith(REQUIRED_MODEL_PREFIX):
+def get_model_name() -> str:
+    """
+    Expect an explicit Gemini 3 model.
+    Example:
+      GEMINI_MODEL=gemini-3-fast
+    """
+    model = _require_env(GEMINI_MODEL_ENV)
+
+    if not model.startswith("gemini-3"):
         raise RuntimeError(
-            f"{GEMINI_MODEL_ENV} must target Gemini 3 family, got: {model_name}"
+            f"{GEMINI_MODEL_ENV} must be a Gemini 3 model, got: {model}"
         )
 
-    return genai.GenerativeModel(model_name)
+    return model
 
 
 # ---------------------------------------------------------------------
-# Defensive JSON extraction
+# Defensive JSON extraction (LLMs are never trusted)
 # ---------------------------------------------------------------------
 
 def extract_json(text: str) -> Dict[str, Any]:
     """
-    Extract the first valid JSON object from model output.
+    Extract the first JSON object from model output.
 
-    Defends against:
+    Handles:
     - markdown fences
-    - extra text before/after JSON
+    - leading / trailing text
     """
     cleaned = text.strip()
 
@@ -101,17 +95,16 @@ def extract_json(text: str) -> Dict[str, Any]:
     end = cleaned.rfind("}")
 
     if start == -1 or end == -1 or end < start:
-        raise ValueError("No valid JSON object found in Gemini output")
+        raise ValueError("No JSON object found in Gemini output")
 
     return json.loads(cleaned[start : end + 1])
 
 
 # ---------------------------------------------------------------------
-# Prompt construction (proposal-only)
+# Prompt (STRICT JSON CONTRACT)
 # ---------------------------------------------------------------------
 
 def build_prompt(context: str) -> str:
-    """Build a strict JSON-only prompt for proposal generation."""
     return f"""
 You must output ONLY a valid JSON object.
 No markdown. No explanations. No extra text.
@@ -140,17 +133,14 @@ JSON schema:
 
 
 # ---------------------------------------------------------------------
-# Main agent flow
+# Main execution
 # ---------------------------------------------------------------------
 
 def main() -> None:
-    """Run Gemini proposal flow and submit it to the causal safety layer."""
-    api_key = _require_env(GEMINI_API_KEY_ENV)
-    genai.configure(api_key=api_key)
+    client = get_client()
+    model_name = get_model_name()
 
-    model = get_model()
-
-    # Observational context (can be loaded from CSV, sensors, API, etc.)
+    # Observational context (example – can come from CSV, sensors, API, etc.)
     context = """
 User metrics summary:
 - mood: low
@@ -159,26 +149,44 @@ User metrics summary:
 - sleep: good
 """
 
-    response = model.generate_content(build_prompt(context))
+    # -----------------------------------------------------------------
+    # Gemini 3 proposal (proposal-only role)
+    # -----------------------------------------------------------------
+
+    response = client.models.generate_content(
+        model=model_name,
+        contents=build_prompt(context),
+    )
 
     try:
         raw_proposal = extract_json(response.text)
         proposal = normalize_proposal(raw_proposal)
     except Exception as exc:
         raise RuntimeError(
-            f"Invalid proposal returned by Gemini:\n{response.text}"
+            f"Invalid JSON proposal from Gemini:\n{response.text}"
         ) from exc
+
+    # -----------------------------------------------------------------
+    # Deterministic safety evaluation (PCB decides)
+    # -----------------------------------------------------------------
 
     verdict = evaluate_with_causal_engine(
         proposal=proposal,
         data_path=DEFAULT_DATA_PATH,
     )
 
+    # -----------------------------------------------------------------
+    # Output (audit-friendly)
+    # -----------------------------------------------------------------
+
     print("\n=== Gemini proposal ===")
     print(json.dumps(proposal, indent=2))
 
     print("\n=== Causal verdict ===")
-    print(json.dumps({k: v for k, v in verdict.items() if k != "proposal"}, indent=2))
+    print(json.dumps(
+        {k: v for k, v in verdict.items() if k != "proposal"},
+        indent=2,
+    ))
 
 
 if __name__ == "__main__":
