@@ -19,7 +19,6 @@ import argparse
 from pcb_graph_export import export_personal_causal_graph
 from pcb_validate_pcg import validate_pcg_file
 import traceback
-import traceback
 
 # Ensure we can import sibling modules when running from repo root
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
