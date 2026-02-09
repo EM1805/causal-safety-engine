@@ -14,9 +14,6 @@ jobs:
       PYTHONUNBUFFERED: "1"
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      # 🔒 STABLE + SUPPORTED MODEL
-      GEMINI_MODEL: models/gemini-pro
-
     steps:
       # --------------------------------------------------
       # 1. Checkout repository
@@ -51,13 +48,14 @@ jobs:
 
       # --------------------------------------------------
       # 5. Run Gemini-governed proposal agent
+      #    (Gemini proposes, engine decides)
       # --------------------------------------------------
       - name: Run Gemini governed agent
         run: |
           python integrations/gemini/gemini_llm_agent.py
 
       # --------------------------------------------------
-      # 6. Run trading governance demo (non-blocking)
+      # 6. Run trading governance demo (optional, non-blocking)
       # --------------------------------------------------
       - name: Run Gemini trading governance demo
         continue-on-error: true
