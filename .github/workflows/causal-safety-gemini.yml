@@ -2,7 +2,7 @@ name: Causal Safety Engine + Gemini (Governed)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
@@ -13,7 +13,9 @@ jobs:
     env:
       PYTHONUNBUFFERED: "1"
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GEMINI_MODEL: gemini-3.0-pro
+
+      # 🔒 STABLE + SUPPORTED MODEL
+      GEMINI_MODEL: gemini-1.5-flash
 
     steps:
       # --------------------------------------------------
@@ -40,33 +42,35 @@ jobs:
           pip install google-generativeai
 
       # --------------------------------------------------
-      # 4. Run Causal Safety Engine CLI (baseline)
+      # 4. Run Causal Safety Engine (deterministic baseline)
       # --------------------------------------------------
-      - name: Run Causal Safety Engine (CLI)
+      - name: Run Causal Safety Engine (CLI baseline)
         run: |
           python IMPLEMENTATION/pcb_one_click/pcb_cli.py run \
             --data IMPLEMENTATION/pcb_one_click/data.csv
 
       # --------------------------------------------------
-      # 5. Run Gemini-governed agent (proposal only)
+      # 5. Run Gemini-governed proposal agent
       # --------------------------------------------------
       - name: Run Gemini governed agent
         run: |
           python integrations/gemini/gemini_llm_agent.py
 
       # --------------------------------------------------
-      # 6. Run trading governance demo (optional but powerful)
+      # 6. Run trading governance demo (non-blocking)
       # --------------------------------------------------
       - name: Run Gemini trading governance demo
+        continue-on-error: true
         run: |
           python integrations/gemini/live_trading_demo.py
 
       # --------------------------------------------------
-      # 7. Upload audit artifacts
+      # 7. Upload audit artifacts (ALWAYS)
       # --------------------------------------------------
       - name: Upload audit artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: causal-safety-artifacts
+          name: causal-safety-audit
           path: |
             out/
