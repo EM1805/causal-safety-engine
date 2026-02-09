@@ -1,0 +1,72 @@
+name: Causal Safety Engine + Gemini (Governed)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  causal-safety-gemini:
+    runs-on: ubuntu-latest
+
+    env:
+      PYTHONUNBUFFERED: "1"
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-3.0-pro
+
+    steps:
+      # --------------------------------------------------
+      # 1. Checkout repository
+      # --------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------
+      # 2. Setup Python
+      # --------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # --------------------------------------------------
+      # 3. Install dependencies
+      # --------------------------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas
+          pip install google-generativeai
+
+      # --------------------------------------------------
+      # 4. Run Causal Safety Engine CLI (baseline)
+      # --------------------------------------------------
+      - name: Run Causal Safety Engine (CLI)
+        run: |
+          python IMPLEMENTATION/pcb_one_click/pcb_cli.py run \
+            --data IMPLEMENTATION/pcb_one_click/data.csv
+
+      # --------------------------------------------------
+      # 5. Run Gemini-governed agent (proposal only)
+      # --------------------------------------------------
+      - name: Run Gemini governed agent
+        run: |
+          python integrations/gemini/gemini_llm_agent.py
+
+      # --------------------------------------------------
+      # 6. Run trading governance demo (optional but powerful)
+      # --------------------------------------------------
+      - name: Run Gemini trading governance demo
+        run: |
+          python integrations/gemini/live_trading_demo.py
+
+      # --------------------------------------------------
+      # 7. Upload audit artifacts
+      # --------------------------------------------------
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: causal-safety-artifacts
+          path: |
+            out/
