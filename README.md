@@ -50,12 +50,12 @@ in high-stakes or regulated environments.
 
 ## Key Capabilities
 
-### ✔ True Causal Discovery
+###  True Causal Discovery
 - Identifies genuine causal relationships
 - Rejects spurious correlations
 - Handles confounders and common causal biases
 
-### ✔ Causal Safety & Guardrails
+###  Causal Safety & Guardrails
 - Explicit rejection of:
   - Simpson’s paradox
   - collider bias
@@ -63,14 +63,14 @@ in high-stakes or regulated environments.
   - spurious time trends
 - Safety-first default behavior (no false positives by design)
 
-### ✔ Robustness & Stability
+###  Robustness & Stability
 - Automated testing for:
   - stress scenarios
   - multi-run stability
   - reproducibility
 - Consistent outputs under data perturbations
 
-### ✔ Audit & Certification Ready
+###  Audit & Certification Ready
 - Every run is:
   - isolated
   - hashed
@@ -113,9 +113,6 @@ runs/
 Causal Safety Engine is designed as a local-first analytical engine.
 It does not expose network services and does not process untrusted remote input.
 
-Security findings from static analysis tools (e.g. path traversal warnings)
-are evaluated in the context of a CLI-only execution model and documented
-accordingly.
 
 ## Project Status
 
