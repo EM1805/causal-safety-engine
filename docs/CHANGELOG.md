@@ -102,10 +102,3 @@ designed for regulated and high-risk AI systems.
 
 ---
 
-## Licensing Notes
-
-- The Causal Safety Engine is distributed as a **licensed SDK**
-- Intended for integration within OEM and enterprise systems
-- Redistribution and embedding subject to licensing terms
-
----
