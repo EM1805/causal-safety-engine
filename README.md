@@ -114,8 +114,3 @@ Causal Safety Engine is designed as a local-first analytical engine.
 It does not expose network services and does not process untrusted remote input.
 
 
-## Project Status
-
-- Engine: **production-ready reference implementation**
-- CI/CD: **fully automated**
-- Safety & stability: **certified via tests**
