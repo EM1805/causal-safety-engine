@@ -1,116 +1,216 @@
-# Causal Safety Engine  
+ # Causal Safety Engine (CSE)
+ 
+A runtime safety layer for AI systems that blocks actions when causal evidence is not reliable enough.
+ 
 
-
-## Overview
-
+> **Core principle:** when causal identifiability is insufficient, the correct behavior is **causal silence** (no actionable recommendation).
+ 
 **Causal Safety Engine** (CSE) is a runtime safety layer for AI systems that prevents actions when causal reasoning is unreliable.
-Instead of improving model predictions, CSE introduces a decision gate that evaluates whether a system’s output is supported by stable causal signals. If causal stability is insufficient, the system abstains from acting.
-
-
-## Design Principle: Causal Silence
-
-When causal identifiability is insufficient, the engine **intentionally produces no insights**.
-Silence is treated as a correct and safe outcome, not a failure.
 
 ---
 
-## Intervention Safety & Action Blocking
+## Why this exists
 
-The Causal Safety Engine **never authorizes interventions by default**.
+CSE enforces a strict separation between two phases that are often mixed:
+ 
+1. **Causal discovery** (analysis / insights)
+2. **Action authorization** (operational decision)
+ 
 
-Causal discovery and causal action are treated as **strictly separate phases**.
-Even when exploratory or tentative causal signals exist, the engine:
-
-- does **not** recommend actions
-- does **not** generate intervention plans
-- does **not** expose “what-to-do” outputs
-
-Interventions are **explicitly blocked** unless all of the following conditions are met:
-
-- causal identifiability is satisfied
-- robustness and stability tests pass
-- no safety or silence gate is triggered
-- the run is explicitly marked as *intervention-enabled*
-
-When causal certainty is insufficient, the correct and safe behavior is **causal silence**:
-no insights promoted, no actions suggested, no downstream activation.
-
-This design prevents unsafe automation, decision leakage, and premature causal deployment
-in high-stakes or regulated environments.
-
-## What This Engine Is Not
-
-- Not an AI assistant
-- Not a decision-making system
-- Not an intervention recommender
-- Not an optimization or automation engine
-- Not a replacement for human or regulatory judgment
-
+This reduces the risk of:
+ 
+- premature automation
+- decision leakage
+- causally unjustified interventions
+- false positives in high-impact settings
+ 
+---
+ 
+###  Does
+ 
+- Runs a local, deterministic causal pipeline.
+- Applies guardrails (bias checks, robustness, stability).
+- Produces auditable artifacts in `out/`.
+- Exposes an integration-ready machine-readable state (`ALLOW | BLOCK | SILENCE`).
+ 
+### Does not
+ 
+- It is not an autonomous decision agent.
+- It does not execute interventions by itself.
+- It does not replace human judgment, governance, or compliance.
+ 
 ---
 
-## Key Capabilities
+## Safety invariants
+ 
+Invariants take precedence over performance and coverage:
+ 
 
-###  True Causal Discovery
-- Identifies genuine causal relationships
-- Rejects spurious correlations
-- Handles confounders and common causal biases
-
-###  Causal Safety & Guardrails
-- Explicit rejection of:
-  - Simpson’s paradox
-  - collider bias
-  - data leakage
-  - spurious time trends
-- Safety-first default behavior (no false positives by design)
-
-###  Robustness & Stability
-- Automated testing for:
-  - stress scenarios
-  - multi-run stability
-  - reproducibility
-- Consistent outputs under data perturbations
-
-###  Audit & Certification Ready
-- Every run is:
-  - isolated
-  - hashed
-  - traceable
-- Artifacts are preserved for verification and compliance
-
-
-
-## Governance & Safety Invariants
-
-The engine enforces non-negotiable safety invariants:
-
-- Safety gates cannot be bypassed by configuration
-- Causal silence overrides downstream demand for outputs
-- No action authorization without explicit intervention enablement
-
-These invariants take precedence over performance, convenience, or coverage.
-
+- Safety gates must not be bypassable through operational config.
+- Causal silence is a valid and preferred outcome over weak insights.
+- No action authorization without causal and robustness conditions being met.
+ 
+Further reading:
+ 
+- `docs/INVARIANTS.md`
+- `docs/DECISION_GATES.md`
+- `docs/VIOLATION_PROTOCOL.md`
+ 
 ---
+ 
 
-## Repository Structure
-
+## Repository structure
+ 
+```text
+IMPLEMENTATION/pcb_one_click/
+  pcb_cli.py                    # unified CLI
+  run_pcb.py                    # legacy runner
+  pcb_integration.py            # machine-readable decision contract
+  demo.py                       # local demo
+  data.csv                      # example dataset
+ 
+integrations/gemini/
+  ...                           # Gemini safety-governed integration adapters
+ 
+docs/
+  ARCHITECTURE.md
+  INTEGRATION_GUIDE.md
+  SECURITY.md
+  INVARIANTS.md
 ```
-IMPLEMENTATION/
-  pcb_one_click/
-    demo.py              # core causal engine
-    data.csv             # example dataset
-    stress_test/         # safety & stability tests
+ 
+---
+ 
+## Requirements
+ 
+- Python 3.7+
+- Python dependencies from `IMPLEMENTATION/pcb_one_click/`
+ 
 
-
-runs/
-  <run_id>/
-    data.csv
-    out/
-      edges.csv
-      insights_*.csv
+Quick install:
+ 
+```bash
+cd IMPLEMENTATION/pcb_one_click
+pip install -r requirements.txt
 ```
-## Security
+ 
+---
+ 
+## Quickstart (CLI)
 
-Causal Safety Engine is designed as a local-first analytical engine.
-It does not expose network services and does not process untrusted remote input.
+From repository root:
 
+```bash
+python IMPLEMENTATION/pcb_one_click/pcb_cli.py init
+python IMPLEMENTATION/pcb_one_click/pcb_cli.py run --data IMPLEMENTATION/pcb_one_click/data.csv --skip-32
+```
 
+Main commands:
+
+- `init` → prepare `out/`
+- `run` → full pipeline (with selective skip flags)
+- `plan`, `log`, `eval` → experimental workflow (L2.9)
+- `alerts` → daily alerts (L2.8)
+- `validate` → level 3.2 validation only
+- `decision` → machine-readable integration contract
+
+Full help:
+
+```bash
+python IMPLEMENTATION/pcb_one_click/pcb_cli.py --help
+```
+ 
+ ---
+ 
+## Code-first integration (recommended)
+
+For production integrations, avoid parsing text logs and consume the JSON contract:
+ 
+```bash
+python IMPLEMENTATION/pcb_one_click/pcb_cli.py decision --print-json
+ ```
+
+Default output file:
+
+- `out/integration_decision.json`
+
+Example contract:
+
+```json
+{
+  "schema_version": "v1",
+  "generated_at_utc": "2026-01-01T00:00:00Z",
+  "decision_state": "ALLOW",
+  "decision_reason": "no_active_alerts",
+  "metrics": {
+    "kept_insights_count": 5,
+    "alerts_count": 0
+  },
+  "artifacts": {
+    "insights_level2_csv": "out/insights_level2.csv",
+    "alerts_level28_csv": "out/alerts_today_level28.csv"
+  }
+}
+ ```
+ 
+### Decision mapping
+
+- `SILENCE`: no kept insights are available
+- `BLOCK`: kept insights exist and at least one alert is active
+- `ALLOW`: kept insights exist and no active alerts are present
+
+---
+
+## Main outputs (`out/`)
+
+- `data_clean.csv`
+- `edges.csv`
+- `insights_level2.csv`
+- `alerts_today_level28.csv`
+- `experiment_plan.csv`
+- `experiment_results.csv`
+- `experiment_summary_level29.csv`
+- `insights_level3.csv`
+- `insights_level3_ledger.csv`
+- `experiment_trials_enriched_level32.csv`
+- `integration_decision.json`
+
+---
+
+## LLM integrations
+
+The `integrations/gemini/` folder shows a safety-governed pattern:
+
+- LLM generates proposals only
+- CSE remains the deterministic evaluation authority
+- model-side override is not allowed
+
+---
+
+## Security and reproducibility
+
+- Local-first: no network service exposed by default.
+- Auditable per-run artifacts.
+- See:
+  - `docs/SECURITY.md`
+  - `docs/REPRODUCIBILITY.md`
+  - `docs/ARTIFACT_MANIFEST.md`
+
+---
+
+## Recommended rollout path for integrators
+
+1. **Shadow mode**: run CSE and log decisions without enforcement.
+2. **Soft gate**: block only critical cases.
+3. **Hard gate**: full enforcement on `decision_state`.
+4. **Audit loop**: artifact retention + periodic policy/config review.
+
+Extended integration guide:
+
+- `docs/INTEGRATION_GUIDE.md`
+
++---
+ 
+## License
+ 
+See `License.md`.
