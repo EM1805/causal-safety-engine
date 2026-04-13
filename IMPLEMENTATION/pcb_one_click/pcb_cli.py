@@ -18,6 +18,7 @@ import json
 import argparse
 from pcb_graph_export import export_personal_causal_graph
 from pcb_validate_pcg import validate_pcg_file
+from pcb_integration import build_decision_contract, write_decision_contract
 import traceback
 
 # Ensure we can import sibling modules when running from repo root
@@ -41,7 +42,7 @@ OUT_INSIGHTS_L3 = os.path.join(OUT_DIR, "insights_level3.csv")
 OUT_LEDGER_L3 = os.path.join(OUT_DIR, "insights_level3_ledger.csv")
 # current Level 3.2 file name in this package
 OUT_TRIALS_ENRICHED = os.path.join(OUT_DIR, "experiment_trials_enriched_level32.csv")
-
+OUT_INTEGRATION_DECISION = os.path.join(OUT_DIR, "integration_decision.json")
 DEFAULT_CONFIG_JSON = "pcb.json"
 
 
@@ -334,6 +335,19 @@ def cmd_alerts(args):
     )
     return 0 if ok else 2
 
+def cmd_decision(args):
+    _ensure_out()
+    contract = build_decision_contract(insights_path=args.insights, alerts_path=args.alerts)
+    out_path = write_decision_contract(contract, out_path=args.out)
+
+    if args.print_json:
+        print(json.dumps(contract, ensure_ascii=False, indent=2))
+    else:
+        print("[pcb] integration decision:", contract.get("decision_state"))
+        print("[pcb] reason:", contract.get("decision_reason"))
+        print("[pcb] contract saved:", out_path)
+    return 0
+
 
 def build_parser():
     p = argparse.ArgumentParser(
@@ -382,6 +396,13 @@ def build_parser():
 
     sp = sub.add_parser("validate", help="Run Level 3.2 counterfactual validation only")
     sp.set_defaults(func=cmd_validate)
+
+    sp = sub.add_parser("decision", help="Build machine-readable integration decision contract")
+    sp.add_argument("--insights", default=OUT_INSIGHTS_L2, help="Insights CSV path")
+    sp.add_argument("--alerts", default=OUT_ALERTS_L28, help="Alerts CSV path")
+    sp.add_argument("--out", default=OUT_INTEGRATION_DECISION, help="Decision JSON output path")
+    sp.add_argument("--print-json", action="store_true", dest="print_json", help="Print contract JSON to stdout")
+    sp.set_defaults(func=cmd_decision)
 
     return p
 
