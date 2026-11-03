@@ -1,35 +1,52 @@
-name: Gemini Safety-Governed Demo
+name: gemini-demo
 
 on:
-  workflow_dispatch:   # esecuzione manuale (consigliato)
   push:
-    paths:
-      - "integrations/gemini/**"
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  gemini-demo:
+  run-demo:
     runs-on: ubuntu-latest
 
     steps:
+      # ------------------------------------------------------------
+      # 1. Checkout repository
+      # ------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      # ------------------------------------------------------------
+      # 2. Setup Python
+      # ------------------------------------------------------------
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
+      # ------------------------------------------------------------
+      # 3. Install dependencies (NO requirements.txt)
+      # ------------------------------------------------------------
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install pandas google-generativeai
 
-      - name: Prepare output directory
-        run: mkdir -p out
-        
-
-      - name: Run Gemini governed agent
+      # ------------------------------------------------------------
+      # 4. Run Gemini-governed agent
+      # ------------------------------------------------------------
+      - name: Run Gemini-governed agent
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          mkdir -p out
           python integrations/gemini/gemini_llm_agent.py
+
+      # ------------------------------------------------------------
+      # 5. Upload artifacts (audit & determinism proof)
+      # ------------------------------------------------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-governed-artifacts
+          path: out/
