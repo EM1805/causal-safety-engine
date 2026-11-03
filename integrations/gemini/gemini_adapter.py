@@ -1,3 +1,9 @@
+"""Gemini adapter for the Causal Safety Engine.
+
+Design contract:
+- Gemini can only *propose* actions.
+- The deterministic PCB CLI remains the execution authority.
+- Proposals are validated and persisted for auditing.
 """
 Gemini adapter for the Causal Safety Engine.
 
@@ -13,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from typing import Any, Dict, Optional
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -22,6 +29,91 @@ from typing import Any, Dict, Optional
 # ---------------------------------------------------------------------
 
 class GeminiProposalError(Exception):
+    """Raised when a proposal payload is missing/invalid."""
+
+
+class GeminiEngineError(Exception):
+    """Raised when PCB CLI execution fails."""
+
+
+def _ensure_out_dir() -> None:
+    os.makedirs("out", exist_ok=True)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def normalize_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize proposal into a canonical schema.
+
+    Canonical schema:
+    {
+      "action": "adjust_features",
+      "params": {"deltas": {"feature": number}},
+      "rationale": "..."
+    }
+
+    Backward-compatible input supported:
+    {
+      "proposed_delta": {"feature": number}
+    }
+    """
+    if not isinstance(proposal, dict):
+        raise GeminiProposalError("proposal must be an object")
+
+    # Legacy payload compatibility.
+    if "proposed_delta" in proposal:
+        deltas = proposal.get("proposed_delta")
+        if not isinstance(deltas, dict) or not deltas:
+            raise GeminiProposalError("proposal.proposed_delta must be a non-empty object")
+
+        canonical_deltas = {}
+        for key, value in deltas.items():
+            if not isinstance(key, str) or not key.strip():
+                raise GeminiProposalError("delta keys must be non-empty strings")
+            if not _is_number(value):
+                raise GeminiProposalError(f"delta '{key}' must be numeric")
+            canonical_deltas[key.strip()] = float(value)
+
+        rationale = proposal.get("rationale", "legacy payload normalized")
+        if not isinstance(rationale, str):
+            raise GeminiProposalError("proposal.rationale must be a string")
+
+        return {
+            "action": "adjust_features",
+            "params": {"deltas": canonical_deltas},
+            "rationale": rationale.strip(),
+        }
+
+    action = proposal.get("action")
+    params = proposal.get("params")
+    rationale = proposal.get("rationale", "")
+
+    if not isinstance(action, str) or not action.strip():
+        raise GeminiProposalError("proposal.action must be a non-empty string")
+    if not isinstance(params, dict):
+        raise GeminiProposalError("proposal.params must be an object")
+    if not isinstance(rationale, str):
+        raise GeminiProposalError("proposal.rationale must be a string")
+
+    deltas = params.get("deltas")
+    if not isinstance(deltas, dict) or not deltas:
+        raise GeminiProposalError("proposal.params.deltas must be a non-empty object")
+
+    canonical_deltas = {}
+    for key, value in deltas.items():
+        if not isinstance(key, str) or not key.strip():
+            raise GeminiProposalError("delta keys must be non-empty strings")
+        if not _is_number(value):
+            raise GeminiProposalError(f"delta '{key}' must be numeric")
+        canonical_deltas[key.strip()] = float(value)
+
+    return {
+        "action": action.strip(),
+        "params": {"deltas": canonical_deltas},
+        "rationale": rationale.strip(),
+    }
     """Raised when the Gemini proposal is missing or invalid."""
 
 
@@ -159,6 +251,13 @@ def evaluate_with_causal_engine(
     timeout_seconds: int = 120,
     config_path: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Validate proposal, run PCB CLI, and return deterministic engine result."""
+    canonical_proposal = normalize_proposal(proposal)
+    _ensure_out_dir()
+
+    proposal_path = "out/gemini_proposal.json"
+    with open(proposal_path, "w", encoding="utf-8") as file_obj:
+        json.dump(canonical_proposal, file_obj, indent=2)
     """
     Validate + normalize a Gemini proposal, invoke the PCB CLI,
     and return the deterministic engine result.
@@ -181,7 +280,20 @@ def evaluate_with_causal_engine(
         "--data",
         _resolve_input_path(data_path),
     ]
+    if config_path:
+        cmd.extend(["--config", config_path])
 
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GeminiEngineError(f"engine timeout after {timeout_seconds}s") from exc
+
+    audit_path = "out/gemini_audit_record.json"
     if config_path:
         cmd.extend(["--config", _resolve_input_path(config_path)])
 
@@ -205,6 +317,10 @@ def evaluate_with_causal_engine(
         "timeout_seconds": timeout_seconds,
         "returncode": result.returncode,
         "stderr": result.stderr.strip(),
+        "proposal_path": proposal_path,
+    }
+    with open(audit_path, "w", encoding="utf-8") as file_obj:
+        json.dump(audit_record, file_obj, indent=2)
         "proposal_path": str(proposal_path),
     }
 
@@ -214,6 +330,11 @@ def evaluate_with_causal_engine(
     if result.returncode != 0:
         raise GeminiEngineError(result.stderr.strip() or "causal engine failed")
 
+    return {
+        "status": "ENGINE_EXECUTED",
+        "proposal": canonical_proposal,
+        "proposal_path": proposal_path,
+        "audit_record_path": audit_path,
     # ---- Authoritative output
     return {
         "status": "ENGINE_EXECUTED",
