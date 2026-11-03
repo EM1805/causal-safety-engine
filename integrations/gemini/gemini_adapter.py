@@ -6,11 +6,16 @@ Design contract:
 - Proposals are validated and persisted for auditing.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
 from typing import Any, Dict, Optional
 
+# ---------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------
 
 class GeminiProposalError(Exception):
     """Raised when a proposal payload is missing/invalid."""
@@ -100,6 +105,112 @@ def normalize_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _ensure_out_dir() -> None:
+    _out_dir().mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_input_path(path: str) -> str:
+    """
+    Resolve a path relative to repo root if not absolute.
+    """
+    candidate = Path(path)
+    if candidate.is_absolute() or candidate.exists():
+        return str(candidate)
+
+    repo_candidate = _repo_root() / candidate
+    return str(repo_candidate)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+# ---------------------------------------------------------------------
+# Proposal normalization
+# ---------------------------------------------------------------------
+
+def normalize_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize a Gemini proposal into the canonical schema.
+
+    Canonical schema:
+    {
+      "action": "adjust_features",
+      "params": {
+        "deltas": {
+          "feature_name": number
+        }
+      },
+      "rationale": "string"
+    }
+
+    Legacy compatibility supported:
+    {
+      "proposed_delta": { "feature": number }
+    }
+    """
+    if not isinstance(proposal, dict):
+        raise GeminiProposalError("proposal must be an object")
+
+    # ---- Legacy payload support
+    if "proposed_delta" in proposal:
+        deltas = proposal.get("proposed_delta")
+        if not isinstance(deltas, dict) or not deltas:
+            raise GeminiProposalError("proposal.proposed_delta must be a non-empty object")
+
+        canonical_deltas: Dict[str, float] = {}
+        for key, value in deltas.items():
+            if not isinstance(key, str) or not key.strip():
+                raise GeminiProposalError("delta keys must be non-empty strings")
+            if not _is_number(value):
+                raise GeminiProposalError(f"delta '{key}' must be numeric")
+            canonical_deltas[key.strip()] = float(value)
+
+        rationale = proposal.get("rationale", "legacy payload normalized")
+        if not isinstance(rationale, str):
+            raise GeminiProposalError("proposal.rationale must be a string")
+
+        return {
+            "action": "adjust_features",
+            "params": {"deltas": canonical_deltas},
+            "rationale": rationale.strip(),
+        }
+
+    # ---- Canonical payload
+    action = proposal.get("action")
+    params = proposal.get("params")
+    rationale = proposal.get("rationale", "")
+
+    if not isinstance(action, str) or not action.strip():
+        raise GeminiProposalError("proposal.action must be a non-empty string")
+    if not isinstance(params, dict):
+        raise GeminiProposalError("proposal.params must be an object")
+    if not isinstance(rationale, str):
+        raise GeminiProposalError("proposal.rationale must be a string")
+
+    deltas = params.get("deltas")
+    if not isinstance(deltas, dict) or not deltas:
+        raise GeminiProposalError("proposal.params.deltas must be a non-empty object")
+
+    canonical_deltas: Dict[str, float] = {}
+    for key, value in deltas.items():
+        if not isinstance(key, str) or not key.strip():
+            raise GeminiProposalError("delta keys must be non-empty strings")
+        if not _is_number(value):
+            raise GeminiProposalError(f"delta '{key}' must be numeric")
+        canonical_deltas[key.strip()] = float(value)
+
+    return {
+        "action": action.strip(),
+        "params": {"deltas": canonical_deltas},
+        "rationale": rationale.strip(),
+    }
+
+
+# ---------------------------------------------------------------------
+# Engine invocation (deterministic boundary)
+# ---------------------------------------------------------------------
+
 def evaluate_with_causal_engine(
     proposal: Dict[str, Any],
     data_path: str,
@@ -116,10 +227,10 @@ def evaluate_with_causal_engine(
 
     cmd = [
         "python",
-        "IMPLEMENTATION/pcb_one_click/pcb_cli.py",
+        str(cli_path),
         "run",
         "--data",
-        data_path,
+        _resolve_input_path(data_path),
     ]
     if config_path:
         cmd.extend(["--config", config_path])

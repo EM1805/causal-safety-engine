@@ -55,7 +55,13 @@ def _safe_float(x, default=None):
 def _write_metrics(obj):
     with open(OUT_METRICS, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2, sort_keys=True)
-
+def _json_safe_counts(series):
+    out = {}
+    vc = series.value_counts()
+    for k, v in vc.items():
+        out[str(k)] = int(v)
+    return out
+    
 def main():
     _ensure_out()
     t0 = time.time()
@@ -124,7 +130,7 @@ def main():
         "n_trials_in": n_in,
         "n_trials_kept": int(df_out.shape[0]),
         "n_trials_dropped": int(df_warn.shape[0]),
-        "drop_reasons_counts": dict(df_warn["reasons"].value_counts()) if df_warn.shape[0] else {},
+        "drop_reasons_counts": _json_safe_counts(df_warn["reasons"]) if df_warn.shape[0] else {},
         "source_file": EXP_RESULTS,
         "out_intake_file": OUT_INTAKE,
         "elapsed_sec": round(time.time() - t0, 6),
