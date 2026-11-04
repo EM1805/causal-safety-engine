@@ -1,38 +1,22 @@
+"""Gemini-governed proposal agent.
+
+Gemini only produces a proposal JSON.
+The Causal Safety Engine (PCB CLI) remains the decision/execution authority.
 """
-Gemini-governed proposal agent.
-
-Role separation (STRICT):
-- Gemini: proposes ONE conservative action (JSON only)
-- Causal Safety Engine (PCB CLI): validates, decides, executes
-
-Gemini has:
-- no execution authority
-- no policy authority
-- no override capability
-"""
-
-from __future__ import annotations
 
 import json
 import os
-from typing import Dict
 
 import google.generativeai as genai
 
 from gemini_adapter import evaluate_with_causal_engine, normalize_proposal
 
 
-# ---------------------------------------------------------------------
-# Model selection
-# ---------------------------------------------------------------------
-
 def get_model() -> genai.GenerativeModel:
-    """
-    Select a valid Gemini model.
+    """Return configured Gemini model.
 
-    Priority:
-    1. GEMINI_MODEL env var (if set)
-    2. First model supporting generateContent
+    - Use GEMINI_MODEL if provided.
+    - Otherwise pick first model that supports generateContent.
     """
     preferred = os.getenv("GEMINI_MODEL")
     if preferred:
@@ -45,20 +29,9 @@ def get_model() -> genai.GenerativeModel:
     raise RuntimeError("No Gemini model supports generateContent")
 
 
-# ---------------------------------------------------------------------
-# Defensive JSON extraction
-# ---------------------------------------------------------------------
-
-def extract_json(text: str) -> Dict:
-    """
-    Extract the first JSON object from Gemini output.
-
-    Handles:
-    - markdown fences
-    - leading/trailing text
-    """
+def extract_json(text: str) -> dict:
+    """Extract first JSON object defensively from model output."""
     text = text.strip()
-
     if text.startswith("```"):
         parts = text.split("```")
         if len(parts) >= 2:
@@ -66,34 +39,25 @@ def extract_json(text: str) -> Dict:
 
     start = text.find("{")
     end = text.rfind("}")
-
     if start == -1 or end == -1:
-        raise ValueError("No JSON object found in Gemini output")
+        raise ValueError("No JSON found in Gemini output")
 
     return json.loads(text[start : end + 1])
 
 
-# ---------------------------------------------------------------------
-# Prompt construction
-# ---------------------------------------------------------------------
-
 def build_prompt(context: str) -> str:
-    """
-    Build a STRICT JSON-only prompt.
-    """
     return f"""
 You must output ONLY a valid JSON object.
-No markdown. No explanations. No extra text.
+No markdown, no extra text.
 
 Context:
 {context}
 
 Rules:
-- Propose exactly ONE conservative action
-- If stress is high, DO NOT increase activity
-- Use small numeric deltas only
+- Propose one conservative action.
+- If stress is high, do not increase activity.
+- Follow exactly this schema:
 
-JSON schema:
 {{
   "action": "adjust_features",
   "params": {{
@@ -108,10 +72,6 @@ JSON schema:
 """
 
 
-# ---------------------------------------------------------------------
-# Main agent loop
-# ---------------------------------------------------------------------
-
 def main() -> None:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -120,7 +80,6 @@ def main() -> None:
     genai.configure(api_key=api_key)
     model = get_model()
 
-    # Observational context (could come from CSV, sensors, API, etc.)
     context = """
 User metrics summary:
 - mood: low
@@ -135,9 +94,7 @@ User metrics summary:
         raw_proposal = extract_json(response.text)
         proposal = normalize_proposal(raw_proposal)
     except Exception as exc:
-        raise RuntimeError(
-            f"Invalid JSON proposal from Gemini:\n{response.text}"
-        ) from exc
+        raise RuntimeError(f"Invalid JSON proposal from Gemini:\n{response.text}") from exc
 
     verdict = evaluate_with_causal_engine(
         proposal=proposal,
@@ -146,12 +103,8 @@ User metrics summary:
 
     print("\n=== Gemini proposal ===")
     print(json.dumps(proposal, indent=2))
-
     print("\n=== Causal verdict ===")
-    print(json.dumps(
-        {k: v for k, v in verdict.items() if k != "proposal"},
-        indent=2
-    ))
+    print(json.dumps({k: v for k, v in verdict.items() if k != "proposal"}, indent=2))
 
 
 if __name__ == "__main__":
