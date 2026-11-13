@@ -213,4 +213,6 @@ Extended integration guide:
  
 ## License
  
-See `License.md`.
+The public Causal Safety Engine is licensed under the [Apache License 2.0](LICENSE).
+
+Copyright (c) 2026 Emiliano Muharremi (EM1805). Third-party materials remain subject to their applicable licenses and notices.
