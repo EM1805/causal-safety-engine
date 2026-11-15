@@ -1,7 +1,7 @@
 # FILE: pcb_experiments_level29.py
 # Python 3.7 compatible
 #
-# PCB – Level 2.9: Experiment Plan + Results Logging (local-first)
+# PCB - Level 2.9: Experiment Plan + Results Logging (local-first)
 #
 # Goal:
 # - plan: build out/experiment_plan.csv from out/insights_level2.csv
@@ -26,6 +26,7 @@ import json
 import argparse
 import numpy as np
 import pandas as pd
+from pcb_trial_scope import trial_id
 
 OUT_DIR = "out"
 
@@ -289,9 +290,14 @@ def cmd_log(args):
     dose = _as_str(args.dose).strip()
     notes = _as_str(args.notes).strip()
 
-    adherence_flag = int(args.adherence_flag)
+    if getattr(args, "adherence_verified", False) and args.adherence_flag is None:
+        raise ValueError("verified adherence requires an explicit adherence_flag")
+    adherence_flag = int(args.adherence_flag) if args.adherence_flag is not None else 1
     if adherence_flag not in (0, 1):
-        adherence_flag = 1
+        raise ValueError("adherence_flag must be 0 or 1")
+    lag_days = getattr(args, "lag_days", None)
+    if lag_days is not None and not 0 <= lag_days <= 365:
+        raise ValueError("lag_days must be between 0 and 365")
 
     data_path = _load_data_path(args.data)
     df_data = pd.read_csv(data_path)
@@ -325,12 +331,17 @@ def cmd_log(args):
         "date": date_str,
         "t_index": int(t_index),
         "adherence_flag": int(adherence_flag),
+        "adherence_verified": int(bool(getattr(args, "adherence_verified", False))),
         "dose": dose,
+        "lag_days": lag_days,
+        "regime_id": getattr(args, "regime_id", ""),
+        "target_col": TARGET_COL,
         "notes": notes,
     }
+    row["trial_id"] = trial_id(row)
 
     if os.path.exists(EXP_RESULTS):
-        df = pd.read_csv(EXP_RESULTS)
+        df = pd.read_csv(EXP_RESULTS, dtype=str, keep_default_na=False)
     else:
         df = pd.DataFrame(columns=list(row.keys()))
 
@@ -481,7 +492,7 @@ def cmd_eval(args):
 def build_argparser():
     p = argparse.ArgumentParser(
         prog="pcb_experiments_level29.py",
-        description="PCB Level 2.9 — Experiment plan + logging + quick eval (local-first)."
+        description="PCB Level 2.9 - Experiment plan + logging + quick eval (local-first)."
     )
     sub = p.add_subparsers(dest="cmd")
 
@@ -493,7 +504,10 @@ def build_argparser():
     p_log.add_argument("--action_name", default="", help="Optional; if empty, will try to load from experiment_plan.csv")
     p_log.add_argument("--date", default="", help="Optional ISO date (YYYY-MM-DD); used to resolve t_index if possible")
     p_log.add_argument("--t_index", type=int, default=None, help="Optional explicit t_index; overrides date mapping")
-    p_log.add_argument("--adherence_flag", type=int, default=1, help="0/1; whether the action was actually performed")
+    p_log.add_argument("--adherence_flag", type=int, choices=(0, 1), help="Whether the action was actually performed")
+    p_log.add_argument("--adherence-verified", action="store_true", help="Attest that adherence was verified")
+    p_log.add_argument("--lag-days", type=int, help="Requested outcome horizon in calendar days")
+    p_log.add_argument("--regime-id", default="", help="Operator-provided regime identifier")
     p_log.add_argument("--dose", default="", help="Optional; dose/intensity text")
     p_log.add_argument("--notes", default="", help="Optional notes")
     p_log.add_argument("--data", default=None, help="Optional data path (default: data.csv or out/demo_data.csv)")

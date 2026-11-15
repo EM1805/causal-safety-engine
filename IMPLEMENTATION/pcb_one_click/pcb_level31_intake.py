@@ -1,7 +1,7 @@
 # FILE: pcb_level31_intake.py
 # Python 3.7 compatible
 #
-# PCB — Level 3.1: Trial Intake + Normalization + Quality Gates (non-breaking, additive)
+# PCB - Level 3.1: Trial Intake + Normalization + Quality Gates (non-breaking, additive)
 #
 # Purpose:
 # - Normalize logged trials into a stable canonical schema for Level 3.2
@@ -24,9 +24,14 @@ import os
 import json
 import time
 import argparse
+from hashlib import sha256
+from io import BytesIO
+from pathlib import Path
 import pandas as pd
+from pcb_config import load_config
+from pcb_trial_scope import TRIAL_FIELDS, integer, text, trial_id
 
-OUT_DIR = "out"
+OUT_DIR = str(load_config().get("out_dir", "out"))
 EXP_RESULTS = os.path.join(OUT_DIR, "experiment_results.csv")
 OUT_INTAKE = os.path.join(OUT_DIR, "experiment_intake_level31.csv")
 OUT_WARN = os.path.join(OUT_DIR, "warnings_level31.csv")
@@ -69,7 +74,8 @@ def main():
     if not os.path.exists(EXP_RESULTS):
         raise FileNotFoundError("Missing %s (log trials first)." % EXP_RESULTS)
 
-    df = pd.read_csv(EXP_RESULTS)
+    source = Path(EXP_RESULTS).read_bytes()
+    df = pd.read_csv(BytesIO(source), dtype=str, keep_default_na=False)
     n_in = int(df.shape[0])
 
     warnings = []
@@ -77,9 +83,12 @@ def main():
 
     for idx, row in df.iterrows():
         reasons = []
+        row = row.to_dict()
+        if not text(row.get("trial_id")) and text(row.get("insight_id")) and integer(row.get("t_index")) is not None:
+            row["trial_id"] = trial_id(row)
         # required fields
         for c in REQUIRED_COLS:
-            if c not in df.columns or pd.isna(row.get(c)):
+            if not text(row.get(c)):
                 reasons.append("missing_%s" % c)
 
         # basic optional normalization
@@ -115,9 +124,11 @@ def main():
             "target_col": str(row.get("target_col", "")) if "target_col" in df.columns else "",
             "notes": str(row.get("notes", "")) if "notes" in df.columns else "",
         }
+        out_row.update({key: text(row.get(key)) for key in TRIAL_FIELDS})
         keep_rows.append(out_row)
 
-    df_out = pd.DataFrame(keep_rows, columns=["trial_id","date","action_name","action_type","adherence","window_days","target_col","notes"])
+    df_out = pd.DataFrame(keep_rows, columns=[*TRIAL_FIELDS, "date", "action_name", "action_type", "adherence",
+                                             "window_days", "target_col", "notes"])
     df_out.to_csv(OUT_INTAKE, index=False)
 
     df_warn = pd.DataFrame(warnings, columns=["row_index","trial_id","reasons"])
@@ -132,6 +143,8 @@ def main():
         "n_trials_dropped": int(df_warn.shape[0]),
         "drop_reasons_counts": _json_safe_counts(df_warn["reasons"]) if df_warn.shape[0] else {},
         "source_file": EXP_RESULTS,
+        "source_sha256": sha256(source).hexdigest(),
+        "intake_sha256": sha256(Path(OUT_INTAKE).read_bytes()).hexdigest(),
         "out_intake_file": OUT_INTAKE,
         "elapsed_sec": round(time.time() - t0, 6),
     }
