@@ -1,7 +1,7 @@
 # FILE: pcb_level31_intake.py
 # Python 3.7 compatible
 #
-# PCB - Level 3.1: Trial Intake + Normalization + Quality Gates (non-breaking, additive)
+# PCB — Level 3.1: Trial Intake + Normalization + Quality Gates (non-breaking, additive)
 #
 # Purpose:
 # - Normalize logged trials into a stable canonical schema for Level 3.2

@@ -1,7 +1,7 @@
 # FILE: pcb_cli.py
 # Python 3.7 compatible
 #
-# PCB - Unified CLI ("pcb")
+# PCB — Unified CLI ("pcb")
 #
 # Orchestrates: 2.6 -> 2.5 -> 2.8 -> 2.9 -> 3.2
 #
@@ -366,7 +366,7 @@ def cmd_decision(args):
 def build_parser():
     p = argparse.ArgumentParser(
         prog="pcb",
-        description="PCB - Unified CLI (2.6 -> 2.5 -> 2.8 -> 2.9 -> 3.2)",
+        description="PCB — Unified CLI (2.6 -> 2.5 -> 2.8 -> 2.9 -> 3.2)",
     )
     p.add_argument("--config", default="pcb.json", help="Optional config JSON (default: pcb.json).")
 

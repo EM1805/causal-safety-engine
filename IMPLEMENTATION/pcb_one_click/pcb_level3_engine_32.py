@@ -1,7 +1,7 @@
 # FILE: pcb_level3_engine_32.py
 # Python 3.7 compatible
 #
-# PCB - Level 3.2: Counterfactual Causal Validation Engine (local-first)
+# PCB – Level 3.2: Counterfactual Causal Validation Engine (local-first)
 #
 # Goal:
 # - Validate Level 2.5 insights via counterfactual matching using past-only controls
@@ -706,7 +706,7 @@ def main(data_path=None, scope_path=None):
 def build_argparser():
     p = argparse.ArgumentParser(
         prog="pcb_level3_engine_32.py",
-        description="PCB Level 3.2 - Counterfactual causal validation (local-first)."
+        description="PCB Level 3.2 — Counterfactual causal validation (local-first)."
     )
     p.add_argument("--data", default=None, help="Optional data path (default: data.csv or out/data_clean.csv or out/demo_data.csv)")
     p.add_argument("--scope", help="Operator-owned JSON scope for intervention evidence")

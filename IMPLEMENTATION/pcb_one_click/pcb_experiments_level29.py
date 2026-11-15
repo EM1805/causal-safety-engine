@@ -1,7 +1,7 @@
 # FILE: pcb_experiments_level29.py
 # Python 3.7 compatible
 #
-# PCB - Level 2.9: Experiment Plan + Results Logging (local-first)
+# PCB – Level 2.9: Experiment Plan + Results Logging (local-first)
 #
 # Goal:
 # - plan: build out/experiment_plan.csv from out/insights_level2.csv
@@ -492,7 +492,7 @@ def cmd_eval(args):
 def build_argparser():
     p = argparse.ArgumentParser(
         prog="pcb_experiments_level29.py",
-        description="PCB Level 2.9 - Experiment plan + logging + quick eval (local-first)."
+        description="PCB Level 2.9 — Experiment plan + logging + quick eval (local-first)."
     )
     sub = p.add_subparsers(dest="cmd")
 
