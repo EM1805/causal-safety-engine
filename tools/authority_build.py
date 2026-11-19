@@ -45,10 +45,18 @@ def classify_edge(r,
     leakage_future = f(r.get("leakage_corr_future"))
     drift_s = f(r.get("drift_corr_time_source"))
     drift_t = f(r.get("drift_corr_time_target"))
-    # Invalid guardrail data must never crash an entire audit or silently pass.
-    try:
-        guardrail = int(r.get("guardrail_flag", 0) or 0)
-    except (TypeError, ValueError, OverflowError):
+    # A guardrail flag is binary evidence. Never truncate fractional numbers,
+    # coerce booleans, or interpret malformed/null values as an inactive flag.
+    # An absent key retains the historical default of zero.
+    raw_guardrail = r.get("guardrail_flag", 0)
+    if isinstance(raw_guardrail, (bool, np.bool_)):
+        guardrail = None
+    elif isinstance(raw_guardrail, str):
+        token = raw_guardrail.strip()
+        guardrail = int(token) if token in {"0", "1"} else None
+    elif isinstance(raw_guardrail, (int, float, np.integer, np.floating)) and raw_guardrail in (0, 1):
+        guardrail = int(raw_guardrail)
+    else:
         guardrail = None
 
     sign_stability = np.nan if np.isnan(p_sign) else abs(p_sign)
