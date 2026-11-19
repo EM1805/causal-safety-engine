@@ -45,13 +45,37 @@ def classify_edge(r,
     leakage_future = f(r.get("leakage_corr_future"))
     drift_s = f(r.get("drift_corr_time_source"))
     drift_t = f(r.get("drift_corr_time_target"))
-    guardrail = int(r.get("guardrail_flag", 0) or 0)
+    # A guardrail flag is binary evidence. Never truncate fractional numbers,
+    # coerce booleans, or interpret malformed/null values as an inactive flag.
+    # An absent key retains the historical default of zero.
+    raw_guardrail = r.get("guardrail_flag", 0)
+    if isinstance(raw_guardrail, (bool, np.bool_)):
+        guardrail = None
+    elif isinstance(raw_guardrail, str):
+        token = raw_guardrail.strip()
+        guardrail = int(token) if token in {"0", "1"} else None
+    elif isinstance(raw_guardrail, (int, float, np.integer, np.floating)) and raw_guardrail in (0, 1):
+        guardrail = int(raw_guardrail)
+    else:
+        guardrail = None
 
     sign_stability = np.nan if np.isnan(p_sign) else abs(p_sign)
 
     # Hard safety / integrity blockers
     if guardrail == 1:
         hard.append("GUARDRAIL")
+    elif guardrail != 0:
+        hard.append("INVALID_GUARDRAIL")
+
+    # Explicitly reject infinities; NaN handling for genuinely absent optional
+    # observations remains unchanged. A probability-like sign confidence must
+    # be within [-1, 1], otherwise a malformed value could appear "stable".
+    if any(np.isinf(v) for v in (
+        support, strength, p_sign, leakage_gap, leakage_future, drift_s, drift_t
+    )):
+        hard.append("NONFINITE_EVIDENCE")
+    if np.isfinite(p_sign) and abs(p_sign) > 1.0:
+        hard.append("INVALID_SIGN_STABILITY")
     if (not np.isnan(leakage_gap) and leakage_gap > leakage_gap_thr) or (not np.isnan(leakage_future) and abs(leakage_future) > leakage_future_thr):
         hard.append("LEAKAGE_RISK")
     if (not np.isnan(drift_s) and abs(drift_s) > drift_thr) or (not np.isnan(drift_t) and abs(drift_t) > drift_thr):
