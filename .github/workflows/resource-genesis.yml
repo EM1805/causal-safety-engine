@@ -1,0 +1,42 @@
+name: Resource Genesis — CPU and RAM shadow
+
+on:
+  push:
+    branches:
+      - protocol-genesis/resource-cpu-memory-20261119
+  pull_request:
+    paths:
+      - 'tools/do_readiness.py'
+      - 'resource_genesis/**'
+      - 'tests/test_resource_genesis_do_readiness.py'
+      - '.github/workflows/resource-genesis.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONHASHSEED: '0'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Recheck original code equivalence
+        run: python -m unittest discover -s tests -p 'test_resource_genesis_do_readiness.py' -v
+      - name: Measure actual CPU and memory by fresh process
+        run: python -m resource_genesis.benchmark --samples 3 --repeats 3 --output resource-evidence/measurements.json
+      - name: Upload full resource receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amantia-resource-genesis-v01
+          path: resource-evidence/measurements.json
+          if-no-files-found: warn
