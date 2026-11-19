@@ -20,6 +20,7 @@ using only the observed DAG edges (stdlib only). Unknowns are surfaced as assump
 """
 
 import argparse, json, os, sys, datetime, csv
+from collections import deque
 from typing import Dict, Any, List, Set, Tuple
 
 def utc_now() -> str:
@@ -67,10 +68,11 @@ def build_graph(pcg: Dict[str, Any]) -> DiGraph:
 def has_path_excluding(G: DiGraph, src: str, dst: str, blocked: Set[str]) -> bool:
     if src in blocked or dst in blocked:
         return False
-    q = [src]
+    # FIFO popleft avoids quadratic list shifts in wide graph traversals.
+    q = deque([src])
     seen = {src}
     while q:
-        u = q.pop(0)
+        u = q.popleft()
         if u == dst:
             return True
         for v in G.successors(u):
@@ -82,16 +84,34 @@ def has_path_excluding(G: DiGraph, src: str, dst: str, blocked: Set[str]) -> boo
 
 def backdoor_confounders(G: DiGraph, X: str, Y: str) -> List[str]:
     """
-    Conservative heuristic:
-    - Any parent of X that can reach Y via directed paths (excluding X) is treated as a potential confounder.
+    Conservative heuristic, preserving original reachability semantics.
+
+    Multiple predecessors of X share one query target Y. Rather than running
+    a BFS for every predecessor, traverse backwards from Y once, excluding X,
+    and intersect with the predecessor set. For <=2 predecessors use the
+    forward query, avoiding a large reverse traversal for small problems.
+
+    This is graph reachability, NOT empirical causal identification.
     """
-    conf = set()
-    for z in G.predecessors(X):
-        if z == Y:
-            continue
-        if has_path_excluding(G, z, Y, blocked={X}):
-            conf.add(z)
-    return sorted(conf)
+    if X == Y:
+        return []
+    parents = G.predecessors(X) - {Y}
+    if not parents:
+        return []
+    if len(parents) <= 2:
+        return sorted(
+            z for z in parents
+            if has_path_excluding(G, z, Y, blocked={X})
+        )
+    seen = {Y}
+    stack = [Y]
+    while stack:
+        node = stack.pop()
+        for parent in G.predecessors(node):
+            if parent != X and parent not in seen:
+                seen.add(parent)
+                stack.append(parent)
+    return sorted(parents & seen)
 
 def check_identifiability(G: DiGraph, X: str, Y: str) -> Dict[str, Any]:
     out = {
