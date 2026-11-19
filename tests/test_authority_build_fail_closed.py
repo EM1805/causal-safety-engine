@@ -75,6 +75,29 @@ class AuthorityFailClosedTest(unittest.TestCase):
                 self.assertTrue(unsafe)
                 self.assertIn("INVALID_GUARDRAIL", reasons)
 
+    def test_fractional_and_malformed_guardrails_fail_closed(self):
+        for value in (
+            0.5, 1.2, 1.9, -0.2, "0.5", "1.0", "0.0",
+            True, False, None, "", [], float("nan"),
+            authority.np.float64(0.5),
+        ):
+            with self.subTest(value=repr(value)):
+                decision, _, unsafe, reasons, _ = self.classify(guardrail_flag=value)
+                self.assertEqual(decision, "BLOCK_INTERVENTION")
+                self.assertTrue(unsafe)
+                self.assertIn("INVALID_GUARDRAIL", reasons)
+
+    def test_canonical_guardrail_representations(self):
+        for value in (0, 0.0, "0", " 0 ", authority.np.int64(0), authority.np.float64(0)):
+            with self.subTest(value=repr(value)):
+                self.assertEqual(self.classify(guardrail_flag=value)[0], "ALLOW")
+        for value in (1, 1.0, "1", authority.np.int64(1), authority.np.float64(1)):
+            with self.subTest(value=repr(value)):
+                decision, _, unsafe, reasons, _ = self.classify(guardrail_flag=value)
+                self.assertEqual(decision, "BLOCK_INTERVENTION")
+                self.assertTrue(unsafe)
+                self.assertIn("GUARDRAIL", reasons)
+
     def test_explicit_guardrail_is_still_blocking(self):
         decision, _, unsafe, reasons, _ = self.classify(guardrail_flag=1)
         self.assertEqual(decision, "BLOCK_INTERVENTION")
