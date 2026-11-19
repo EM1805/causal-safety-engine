@@ -128,8 +128,8 @@ def _call_main(module_name, main_kwargs=None, argv=None):
             return True
         except TypeError:
             pass
-        except SystemExit:
-            return True
+        except SystemExit as exc:
+            return exc.code in (0, None)
         except Exception:
             print("[pcb] ERROR while running:", module_name, "main(argv)")
             traceback.print_exc()
@@ -139,6 +139,9 @@ def _call_main(module_name, main_kwargs=None, argv=None):
         fn(**main_kwargs)
         return True
     except TypeError:
+        if main_kwargs.get("scope_path") is not None:
+            traceback.print_exc()
+            return False
         try:
             fn()
             return True
@@ -274,7 +277,7 @@ def cmd_run(args):
 
     # 3.2
     if cfg.get("pipeline", {}).get("run_level32", True) and not args.skip_32:
-        ok = _call_main("pcb_level3_engine_32", main_kwargs={})
+        ok = _call_main("pcb_level3_engine_32", main_kwargs={"data_path": data_in, "scope_path": args.scope})
         if not ok:
             print("[pcb] Level 3.2 failed.")
             return 2
@@ -295,9 +298,10 @@ def cmd_log(args):
     argv = [
         "log",
         "--insight_id", args.insight_id,
-        "--adherence_flag", str(int(args.adherence_flag)),
         "--notes", args.notes or "",
     ]
+    if args.adherence_flag is not None:
+        argv += ["--adherence_flag", str(args.adherence_flag)]
     if args.action_name:
         argv += ["--action_name", args.action_name]
     if args.date:
@@ -306,6 +310,12 @@ def cmd_log(args):
         argv += ["--t_index", str(int(args.t_index))]
     if args.dose:
         argv += ["--dose", args.dose]
+    if args.adherence_verified:
+        argv += ["--adherence-verified"]
+    if args.lag_days is not None:
+        argv += ["--lag-days", str(args.lag_days)]
+    if args.regime_id:
+        argv += ["--regime-id", args.regime_id]
     if args.data:
         argv += ["--data", args.data]
 
@@ -322,8 +332,12 @@ def cmd_eval(args):
 
 def cmd_validate(args):
     _ensure_out()
-    ok = _call_main("pcb_level3_engine_32", main_kwargs={})
+    ok = _call_main("pcb_level3_engine_32", main_kwargs={"data_path": args.data, "scope_path": args.scope})
     return 0 if ok else 2
+
+
+def cmd_intake(args):
+    return 0 if _call_main("pcb_level31_intake") else 2
 
 
 def cmd_alerts(args):
@@ -370,6 +384,7 @@ def build_parser():
     sp.add_argument("--skip-29-plan", action="store_true", dest="skip_29_plan", help="Skip Level 2.9 plan")
     sp.add_argument("--skip-29-eval", action="store_true", dest="skip_29_eval", help="Skip Level 2.9 eval")
     sp.add_argument("--skip-32", action="store_true", dest="skip_32", help="Skip Level 3.2")
+    sp.add_argument("--scope", help="Operator-owned JSON scope for Level 3.2")
     sp.set_defaults(func=cmd_run)
 
     sp = sub.add_parser("plan", help="Generate out/experiment_plan.csv (Level 2.9 plan)")
@@ -380,7 +395,11 @@ def build_parser():
     sp.add_argument("--action-name", default="", dest="action_name", help="Optional; auto-fill from plan if empty")
     sp.add_argument("--date", default="", help="Optional date YYYY-MM-DD")
     sp.add_argument("--t-index", default=None, type=int, dest="t_index", help="Optional t_index (overrides date)")
-    sp.add_argument("--adherence-flag", default=1, type=int, dest="adherence_flag", help="0/1 performed?")
+    sp.add_argument("--adherence-flag", type=int, choices=(0, 1), dest="adherence_flag",
+                    help="0/1 performed?")
+    sp.add_argument("--adherence-verified", action="store_true", help="Attest that adherence was verified")
+    sp.add_argument("--lag-days", type=int, help="Requested outcome horizon in calendar days")
+    sp.add_argument("--regime-id", default="", help="Operator-provided regime identifier")
     sp.add_argument("--dose", default="", help="Optional dose/intensity string")
     sp.add_argument("--notes", default="", help="Optional notes")
     sp.add_argument("--data", default=None, help="Optional data path (for t_index resolution)")
@@ -395,7 +414,12 @@ def build_parser():
     sp.set_defaults(func=cmd_alerts)
 
     sp = sub.add_parser("validate", help="Run Level 3.2 counterfactual validation only")
+    sp.add_argument("--data", help="Dataset with dated observations")
+    sp.add_argument("--scope", help="Operator-owned JSON scope for intervention evidence")
     sp.set_defaults(func=cmd_validate)
+
+    sp = sub.add_parser("intake", help="Normalize logged trials at Level 3.1")
+    sp.set_defaults(func=cmd_intake)
 
     sp = sub.add_parser("decision", help="Build machine-readable integration decision contract")
     sp.add_argument("--insights", default=OUT_INSIGHTS_L2, help="Insights CSV path")

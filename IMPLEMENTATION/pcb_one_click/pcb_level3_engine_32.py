@@ -25,11 +25,15 @@ import os
 import sys
 import json
 import argparse
+from hashlib import sha256
+from io import BytesIO
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
 
 from pcb_invariants import check_invariants
+from pcb_trial_scope import digest, integer, iso_day, load_scope, scoped_trials
 OUT_DIR = "out"
 
 # -----------------------------
@@ -47,14 +51,42 @@ OUT_DIR = str(_CFG.get("out_dir", OUT_DIR))
 INSIGHTS_L2 = os.path.join(OUT_DIR, "insights_level2.csv")
 EXP_RESULTS = os.path.join(OUT_DIR, "experiment_results.csv")
 EXP_INTAKE_L31 = os.path.join(OUT_DIR, "experiment_intake_level31.csv")
+INTAKE_METRICS = os.path.join(OUT_DIR, "metrics_level31.json")
 
-def _pick_trials_path():
-    return EXP_INTAKE_L31 if os.path.exists(EXP_INTAKE_L31) else EXP_RESULTS
+def _trial_inputs(scoped):
+    def read(path):
+        try:
+            return Path(path).read_bytes()
+        except FileNotFoundError:
+            return None
+
+    source = read(EXP_RESULTS)
+    intake = read(EXP_INTAKE_L31)
+    if intake is None:
+        return source, source
+    if source is None:
+        if scoped:
+            raise ValueError("scoped validation requires the original trial log")
+        return intake, None
+    return (intake if _intake_matches(source, intake) else source), source
+
+
+def _intake_matches(source, intake):
+    try:
+        metrics = json.loads(Path(INTAKE_METRICS).read_bytes())
+    except (FileNotFoundError, ValueError):
+        return False
+    return isinstance(metrics, dict) and (metrics.get("source_sha256"), metrics.get("intake_sha256")) == (
+        sha256(source).hexdigest(), sha256(intake).hexdigest(),
+    )
 
 
 OUT_L3 = os.path.join(OUT_DIR, "insights_level3.csv")
 OUT_LEDGER = os.path.join(OUT_DIR, "insights_level3_ledger.csv")
 OUT_TRIALS = os.path.join(OUT_DIR, "experiment_trials_enriched_level32.csv")
+L3_COLUMNS = ["insight_id", "n_trials", "n_wins", "success_rate_lb", "avg_z_cf", "negctrl_success_lb",
+              "negctrl_pass", "status", "scope_sha256", "action_name", "dose", "target_col", "lag_days",
+              "regime_id", "regime_start"]
 
 DEFAULT_DATA_CSV = "data.csv"
 FALLBACK_DATA_CSV = os.path.join(OUT_DIR, "demo_data.csv")
@@ -325,7 +357,7 @@ def _pretrend_check(df, t_idx, controls, days):
 # -----------------------------
 # Matching
 # -----------------------------
-def match_controls(df, t_idx, covs):
+def match_controls(df, t_idx, covs, allowed=None):
     past = _past_indices(df, t_idx)
     if len(past) == 0:
         return [], {"reason": "no_past"}
@@ -347,6 +379,8 @@ def match_controls(df, t_idx, covs):
 
     dists = []
     for i in past:
+        if allowed is not None and (i not in allowed or allowed[i] >= t_idx):
+            continue
         if not np.all(np.isfinite(X[i])):
             continue
         d = float(np.mean(np.abs(X[i] - x_t)))
@@ -388,20 +422,20 @@ def z_from_controls(df, t_idx, controls):
 # -----------------------------
 # Main
 # -----------------------------
-def main(data_path=None):
+def main(data_path=None, scope_path=None):
     _ensure_out()
+    pd.DataFrame(columns=L3_COLUMNS).to_csv(OUT_L3, index=False)
+    scope = load_scope(scope_path) if scope_path is not None else None
 
     if not os.path.exists(INSIGHTS_L2):
         raise FileNotFoundError("Missing %s (run Level 2.5 first)." % INSIGHTS_L2)
-    trials_path = _pick_trials_path()
-    if not os.path.exists(trials_path):
+    trials_bytes, raw_bytes = _trial_inputs(scoped=scope is not None)
+    if trials_bytes is None:
         # Graceful empty-run behavior: Level 3.2 depends on logged trials.
         # If no trials yet, write empty outputs and exit 0 (enterprise-friendly).
         _ensure_out()
         empty_trials = pd.DataFrame(columns=["insight_id","action_name","date","t_index","adherence_flag","dose","notes"])
         empty_trials.to_csv(OUT_TRIALS, index=False)
-        empty_l3 = pd.DataFrame(columns=["insight_id","action_name","n_trials","success_rate","avg_z","median_z","verdict","notes"])
-        empty_l3.to_csv(OUT_L3, index=False)
         empty_ledger = pd.DataFrame(columns=["date","event","details"])
         empty_ledger.to_csv(OUT_LEDGER, index=False)
         print("No experiment_results.csv found. Level 3.2 needs at least 1 logged trial.")
@@ -412,8 +446,8 @@ def main(data_path=None):
         print("Next step: run `python pcb_experiments_level29.py log --insight_id I2-00001 --notes \"...\")` and then rerun Level 3.2.")
         return 0
 
-    df_i = pd.read_csv(INSIGHTS_L2)
-    df_r = pd.read_csv(trials_path)
+    df_i = pd.read_csv(INSIGHTS_L2, dtype=str, keep_default_na=False)
+    df_r = pd.read_csv(BytesIO(trials_bytes), dtype=str, keep_default_na=False)
 
     data_path = _load_data_path(data_path)
     df = pd.read_csv(data_path)
@@ -422,6 +456,29 @@ def main(data_path=None):
 
     if TARGET_COL not in df.columns:
         raise ValueError("Target column '%s' not found in data." % TARGET_COL)
+
+    records = df_r.to_dict("records")
+    raw = (pd.read_csv(BytesIO(raw_bytes), dtype=str, keep_default_na=False).to_dict("records")
+           if raw_bytes is not None and raw_bytes is not trials_bytes else records)
+    active = {index for row in raw if integer(row.get("adherence_flag")) != 0
+              for index in (integer(row.get("t_index")),) if index is not None and index < len(df)}
+    if PROPENSITY_ACTION_COL in df.columns:
+        active.update(np.flatnonzero(pd.to_numeric(df[PROPENSITY_ACTION_COL], errors="coerce").fillna(0) > 0))
+    control_outcomes = None
+    if scope:
+        if scope["target_col"] != TARGET_COL or not any(
+            str(row.get("insight_id")) == scope["insight_id"] and str(row.get("target")) == TARGET_COL
+            and integer(row.get("lag")) == scope["lag_days"] for row in df_i.to_dict("records")
+        ):
+            raise ValueError("scope does not match a Level 2 insight, target and lag")
+        if not _has_date(df) or df[DATE_COL].isna().any():
+            raise ValueError("scoped validation requires one chronological observation per calendar date")
+        days = list(df[DATE_COL].dt.date)
+        if days != sorted(set(days)):
+            raise ValueError("scoped validation requires unique chronological calendar dates")
+        trials, control_outcomes = scoped_trials(records, days, scope, active)
+    else:
+        trials = [(row, integer(row.get("t_index"))) for row in records]
 
     # Ensure previous-target covariate exists (regression-to-mean control).
     # Backward compatible: keep mood_prev and also create a neutral alias target_prev.
@@ -442,6 +499,8 @@ def main(data_path=None):
             covs.append(c)
 
     for c in _numeric_cols(df):
+        if scope and c in {PROPENSITY_ACTION_COL, NEGCTRL_OUTCOME_COL}:
+            continue
         if c not in (TARGET_COL, DATE_COL) and c not in covs:
             covs.append(c)
         if len(covs) >= 10:  # keep small & stable
@@ -451,33 +510,35 @@ def main(data_path=None):
     # If the column doesn't exist in the dataset, we build it from experiment_results (t_index=1).
     if PROPENSITY_ACTION_COL not in df.columns:
         df[PROPENSITY_ACTION_COL] = 0
-        for _t in pd.to_numeric(df_r.get("t_index"), errors="coerce").fillna(-999).astype(int).tolist():
-            if 0 <= int(_t) < len(df):
-                df.loc[int(_t), PROPENSITY_ACTION_COL] = 1
+        df.loc[list(active), PROPENSITY_ACTION_COL] = 1
 
     # Compute propensity scores once (optional).
     propensity = np.full(len(df), np.nan, dtype=float)
     if ENABLE_PROPENSITY:
-        propensity = _compute_propensity(df, PROPENSITY_ACTION_COL, covs)
+        if scope:
+            mask = np.array([day >= iso_day(scope["regime_start"]) for day in days])
+            propensity[mask] = _compute_propensity(df.loc[mask], PROPENSITY_ACTION_COL, covs)
+        else:
+            propensity = _compute_propensity(df, PROPENSITY_ACTION_COL, covs)
         df["__propensity__"] = propensity
 
     # Trial enrichment
     trial_rows = []
     ledger_rows = []
 
-    for _, tr in df_r.iterrows():
+    for tr, outcome_idx in trials:
         iid = _as_str(tr.get("insight_id", "")).strip()
-        t = _safe_float(tr.get("t_index", np.nan), np.nan)
-        if not iid or not np.isfinite(t):
+        t_idx = integer(tr.get("t_index"))
+        if not iid or t_idx is None or outcome_idx is None:
             continue
-        t_idx = int(t)
         if t_idx < 0 or t_idx >= len(df):
             continue
 
-        controls, mmeta = match_controls(df, t_idx, covs)
+        controls, mmeta = match_controls(df, t_idx, covs, allowed=control_outcomes)
+        control_endpoints = [control_outcomes[i] for i in controls] if scope else controls
         z, zmeta = (np.nan, {})
         if controls:
-            z, zmeta = z_from_controls(df, t_idx, controls)
+            z, zmeta = z_from_controls(df, outcome_idx, control_endpoints)
 
         # --- Enterprise causal checks (propensity + pre-trend)
         propensity_t = np.nan
@@ -507,7 +568,7 @@ def main(data_path=None):
         z_negctrl = np.nan
         success_flag_negctrl = np.nan
         if NEGCTRL_ENABLE and controls and (NEGCTRL_OUTCOME_COL in df.columns):
-            z_negctrl, _ = z_from_controls_col(df, t_idx, controls, NEGCTRL_OUTCOME_COL)
+            z_negctrl, _ = z_from_controls_col(df, outcome_idx, control_endpoints, NEGCTRL_OUTCOME_COL)
             if np.isfinite(z_negctrl):
                 # We treat large absolute movements as "suspicious".
                 success_flag_negctrl = int(abs(float(z_negctrl)) >= float(Z_SUCCESS))
@@ -519,6 +580,8 @@ def main(data_path=None):
         trial_rows.append({
             "insight_id": iid,
             "t_index": int(t_idx),
+            "outcome_index": int(outcome_idx),
+            "trial_id": _as_str(tr.get("trial_id", "")),
             "date": _as_str(tr.get("date", "")),
             "action_name": _as_str(tr.get("action_name", "")),
             "adherence_flag": _safe_float(tr.get("adherence_flag", np.nan), np.nan),
@@ -552,6 +615,8 @@ def main(data_path=None):
         ledger_rows.append({
             "insight_id": iid,
             "t_index": int(t_idx),
+            "outcome_index": int(outcome_idx),
+            "trial_id": _as_str(tr.get("trial_id", "")),
             "matched_n": int(len(controls)),
             "controls_idx": "|".join([str(i) for i in controls[: int(K_CONTROLS)]]),
             "avg_dist_top": float(mmeta.get("avg_dist_top", np.nan)) if mmeta else np.nan,
@@ -571,8 +636,9 @@ def main(data_path=None):
             "success_flag_negctrl": success_flag_negctrl,
         })
 
-    df_trials = pd.DataFrame(trial_rows)
-    df_ledger = pd.DataFrame(ledger_rows)
+    audit_columns = ["insight_id", "trial_id", "t_index", "outcome_index", "eligible_flag", "z_cf"]
+    df_trials = pd.DataFrame(trial_rows) if trial_rows else pd.DataFrame(columns=audit_columns)
+    df_ledger = pd.DataFrame(ledger_rows) if ledger_rows else pd.DataFrame(columns=audit_columns)
 
     df_trials.to_csv(OUT_TRIALS, index=False)
     df_ledger.to_csv(OUT_LEDGER, index=False)
@@ -590,7 +656,8 @@ def main(data_path=None):
             # Negative control aggregate (enterprise robustness)
             negctrl_lb = np.nan
             if NEGCTRL_ENABLE and ("success_flag_negctrl" in g.columns):
-                gnc = g[pd.to_numeric(g["success_flag_negctrl"], errors="coerce").notna()].copy()
+                control_sample = g2 if scope else g
+                gnc = control_sample[pd.to_numeric(control_sample["success_flag_negctrl"], errors="coerce").notna()]
                 nn = int(len(gnc))
                 if nn > 0:
                     wins_nc = int(np.sum((pd.to_numeric(gnc["success_flag_negctrl"], errors="coerce").fillna(0) > 0).astype(int)))
@@ -601,7 +668,7 @@ def main(data_path=None):
                 negctrl_pass = int(float(negctrl_lb) <= float(NEGCTRL_MAX_SUCCESS_LB))
 
             status = "candidate"
-            if n >= int(MIN_TRIALS) and lb >= float(MIN_SUCCESS_LB) and (negctrl_pass == 1):
+            if scope and n >= int(MIN_TRIALS) and lb >= float(MIN_SUCCESS_LB) and (negctrl_pass == 1):
                 status = "action_supported"
 
             out_rows.append({
@@ -613,9 +680,10 @@ def main(data_path=None):
                 "negctrl_success_lb": float(negctrl_lb) if np.isfinite(negctrl_lb) else np.nan,
                 "negctrl_pass": int(negctrl_pass),
                 "status": status,
+                **({"scope_sha256": digest(scope), **scope} if scope else {}),
             })
 
-    df_l3 = pd.DataFrame(out_rows)
+    df_l3 = pd.DataFrame(out_rows, columns=L3_COLUMNS)
     df_l3.to_csv(OUT_L3, index=False)
 
     print("\n=== PCB LEVEL 3.2 (counterfactual validation) ===")
@@ -641,13 +709,14 @@ def build_argparser():
         description="PCB Level 3.2 — Counterfactual causal validation (local-first)."
     )
     p.add_argument("--data", default=None, help="Optional data path (default: data.csv or out/data_clean.csv or out/demo_data.csv)")
+    p.add_argument("--scope", help="Operator-owned JSON scope for intervention evidence")
     return p
 
 def cli(argv=None):
     if argv is None:
         argv = sys.argv[1:]
     args = build_argparser().parse_args(argv)
-    main(data_path=args.data)
+    main(data_path=args.data, scope_path=args.scope)
     return 0
 
 if __name__ == "__main__":
