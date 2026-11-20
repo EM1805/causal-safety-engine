@@ -5,7 +5,8 @@ into Authority artifacts (out/AUTHORITY/causal_authority.{csv,json}).
 
 Conservative rules:
 - Adds fields: do_identifiable, do_reason_code, do_assumptions, do_summary
-- If not identifiable: set review_action=BLOCK_INTERVENTION and intervention_unsafe=True
+- If not identifiable: intervention_unsafe=True; the CSV and JSON agree on
+  FLAG (review only) versus BLOCK_INTERVENTION, never authorizing execution
 - Merge do reason into reason_code (pipe-delimited) and append to evidence_summary
 """
 import argparse, json, os
@@ -155,6 +156,23 @@ def run(out_dir: str) -> None:
                     df.at[i, "evidence_summary"] = (prev_e + ("; " if prev_e.strip() else "") + add_e).strip()
 
 
+    # Resolve the final CSV decisions by exact edge identity, including lag.
+    # Conflicting duplicate keys conservatively map to BLOCK_INTERVENTION.
+    csv_actions = {}
+    for _, authority_row in df.iterrows():
+        key = (
+            str(authority_row.get("source")),
+            str(authority_row.get("target")),
+            _norm_lag(authority_row.get("lag")),
+        )
+        action = authority_row.get("review_action")
+        if action not in ("FLAG", "BLOCK_INTERVENTION"):
+            continue
+        if key in csv_actions and csv_actions[key] != action:
+            csv_actions[key] = "BLOCK_INTERVENTION"
+        else:
+            csv_actions[key] = action
+
     df.to_csv(auth_csv, index=False)
 
     j = _load_json(auth_json)
@@ -183,8 +201,15 @@ def run(out_dir: str) -> None:
         rec_auth["do_summary"] = f"do-check: {'identifiable' if identifiable else 'not-identifiable'}"
 
         if not identifiable:
-            rec_auth["review_action"] = "BLOCK_INTERVENTION"
+            # Mirror the CSV's evaluated review decision, not an unconditional
+            # BLOCK that contradicts its permitted (still unsafe) FLAG state.
+            action = csv_actions.get((src, tgt, lag_key), "BLOCK_INTERVENTION")
+            rec_auth["review_action"] = action
             rec_auth["intervention_unsafe"] = True
+            if action == "FLAG":
+                rec_auth["reason_code"] = merge_reason(
+                    rec_auth.get("reason_code", ""), "DO_NOT_IDENTIFIABLE_FLAGGED"
+                )
             rec_auth["reason_code"] = merge_reason(rec_auth.get("reason_code",""), str(reason))
             prev_e = rec_auth.get("evidence_summary","") or ""
             add_e = "do=not-identifiable"
