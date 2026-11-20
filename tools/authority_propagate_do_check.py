@@ -8,7 +8,7 @@ Conservative rules:
 - If not identifiable: set review_action=BLOCK_INTERVENTION and intervention_unsafe=True
 - Merge do reason into reason_code (pipe-delimited) and append to evidence_summary
 """
-import argparse, json, os
+import argparse, json, os, math
 from typing import Any, Dict, Tuple, Optional, List
 
 import pandas as pd
@@ -52,6 +52,60 @@ def merge_reason(prev: str, add: str) -> str:
         parts.add(str(add).strip())
     return "|".join(sorted(parts))
 
+def _review_unidentifiable(row) -> str:
+    """Use the same conservative evidence policy for CSV and JSON records."""
+    # Balanced–Safety: degrade to FLAG where evidence is directionally consistent and no hard risks.
+    # Hard risks always stay BLOCK.
+    leakage_gap = row.get("leakage_gap", None)
+    leakage_future = row.get("leakage_corr_future", None)
+    drift_s = row.get("drift_corr_time_source", None)
+    drift_t = row.get("drift_corr_time_target", None)
+    guardrail = row.get("guardrail_flag", 0)
+
+    def _f(x):
+        try:
+            return float(x)
+        except Exception:
+            return float("nan")
+
+    leakage_gap = _f(leakage_gap)
+    leakage_future = _f(leakage_future)
+    drift_s = _f(drift_s)
+    drift_t = _f(drift_t)
+    support = _f(row.get("support_n", float("nan")))
+    strength = _f(row.get("strength", float("nan")))
+    p_sign = _f(row.get("p_sign", float("nan")))
+    sign_stability = _f(row.get("sign_stability", float("nan")))
+    if sign_stability != sign_stability and p_sign == p_sign:
+        sign_stability = abs(p_sign)
+
+    leakage_gap_thr = 0.25
+    leakage_future_thr = 0.20
+    drift_thr = 0.35
+    flag_sign = 0.65
+    min_support_flag = 20
+    min_stren = 0.02
+
+    hard_risk = False
+    # Fail closed on malformed rather than coercing or crashing on flags.
+    try:
+        guardrail_number = float(guardrail)
+        if not math.isfinite(guardrail_number) or guardrail_number not in (0.0, 1.0):
+            hard_risk = True
+        elif guardrail_number == 1.0:
+            hard_risk = True
+    except (TypeError, ValueError):
+        hard_risk = True
+    if (leakage_gap == leakage_gap and leakage_gap > leakage_gap_thr) or (leakage_future == leakage_future and abs(leakage_future) > leakage_future_thr):
+        hard_risk = True
+    if (drift_s == drift_s and abs(drift_s) > drift_thr) or (drift_t == drift_t and abs(drift_t) > drift_thr):
+        hard_risk = True
+
+    can_flag = (not hard_risk) and (sign_stability == sign_stability) and (sign_stability >= flag_sign) and (support == support) and (support >= min_support_flag) and (strength == strength) and (strength >= min_stren)
+
+    return "FLAG" if can_flag else "BLOCK_INTERVENTION"
+
+
 def run(out_dir: str) -> None:
     do_path = os.path.join(out_dir, "DO_CHECK", "do_identifiability.json")
     auth_csv = os.path.join(out_dir, "AUTHORITY", "causal_authority.csv")
@@ -91,54 +145,14 @@ def run(out_dir: str) -> None:
         df.at[i, "do_summary"] = f"do-check: {'identifiable' if identifiable else 'not-identifiable'}"
 
         if not identifiable:
-            # Balanced–Safety: degrade to FLAG where evidence is directionally consistent and no hard risks.
-            # Hard risks always stay BLOCK.
-            leakage_gap = row.get("leakage_gap", None)
-            leakage_future = row.get("leakage_corr_future", None)
-            drift_s = row.get("drift_corr_time_source", None)
-            drift_t = row.get("drift_corr_time_target", None)
-            guardrail = row.get("guardrail_flag", 0)
-
-            def _f(x):
-                try:
-                    return float(x)
-                except Exception:
-                    return float("nan")
-
-            leakage_gap = _f(leakage_gap)
-            leakage_future = _f(leakage_future)
-            drift_s = _f(drift_s)
-            drift_t = _f(drift_t)
-            support = _f(row.get("support_n", float("nan")))
-            strength = _f(row.get("strength", float("nan")))
-            p_sign = _f(row.get("p_sign", float("nan")))
-            sign_stability = _f(row.get("sign_stability", float("nan")))
-            if sign_stability != sign_stability and p_sign == p_sign:
-                sign_stability = abs(p_sign)
-
-            leakage_gap_thr = 0.25
-            leakage_future_thr = 0.20
-            drift_thr = 0.35
-            flag_sign = 0.65
-            min_support_flag = 20
-            min_stren = 0.02
-
-            hard_risk = False
-            if int(guardrail or 0) == 1:
-                hard_risk = True
-            if (leakage_gap == leakage_gap and leakage_gap > leakage_gap_thr) or (leakage_future == leakage_future and abs(leakage_future) > leakage_future_thr):
-                hard_risk = True
-            if (drift_s == drift_s and abs(drift_s) > drift_thr) or (drift_t == drift_t and abs(drift_t) > drift_thr):
-                hard_risk = True
-
-            can_flag = (not hard_risk) and (sign_stability == sign_stability) and (sign_stability >= flag_sign) and (support == support) and (support >= min_support_flag) and (strength == strength) and (strength >= min_stren)
+            review_candidate = _review_unidentifiable(row)
 
             if "intervention_unsafe" in df.columns:
                 df.at[i, "intervention_unsafe"] = True
 
             if "review_action" in df.columns:
                 prev_action = str(df.at[i, "review_action"]) if not pd.isna(df.at[i, "review_action"]) else ""
-                if can_flag:
+                if review_candidate == "FLAG":
                     df.at[i, "review_action"] = "FLAG"
                     if "reason_code" in df.columns:
                         df.at[i, "reason_code"] = merge_reason(df.at[i, "reason_code"], "DO_NOT_IDENTIFIABLE_FLAGGED")
@@ -183,8 +197,14 @@ def run(out_dir: str) -> None:
         rec_auth["do_summary"] = f"do-check: {'identifiable' if identifiable else 'not-identifiable'}"
 
         if not identifiable:
-            rec_auth["review_action"] = "BLOCK_INTERVENTION"
+            # The same policy is evaluated independently for each representation.
+            # Unlike artifact-to-artifact copying, disagreements remain observable.
+            rec_auth["review_action"] = _review_unidentifiable(rec_auth)
             rec_auth["intervention_unsafe"] = True
+            if rec_auth["review_action"] == "FLAG":
+                rec_auth["reason_code"] = merge_reason(
+                    rec_auth.get("reason_code", ""), "DO_NOT_IDENTIFIABLE_FLAGGED"
+                )
             rec_auth["reason_code"] = merge_reason(rec_auth.get("reason_code",""), str(reason))
             prev_e = rec_auth.get("evidence_summary","") or ""
             add_e = "do=not-identifiable"
