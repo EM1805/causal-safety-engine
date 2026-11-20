@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'tools/authority_build.py'
+      - 'tools/authority_propagate_do_check.py'
+      - 'tests/test_authority_do_artifacts_consistency.py'
       - 'tests/test_authority_build_fail_closed.py'
       - '.github/workflows/authority-falsification.yml'
   workflow_dispatch:
@@ -23,3 +25,5 @@ jobs:
       - run: python -m pip install numpy pandas
       - name: Test new and original authority decisions
         run: python -m unittest discover -s tests -p 'test_authority_build_fail_closed.py' -v
+      - name: Test do-check authority CSV/JSON parity
+        run: python -m unittest discover -s tests -p 'test_authority_do_artifacts_consistency.py' -v
