@@ -85,5 +85,35 @@ class DoArtifactParityTests(unittest.TestCase):
             self.assertEqual(df.loc[src, "review_action"], records[src]["review_action"])
 
 
+    def test_invalid_guardrail_fails_closed_in_both_artifacts(self):
+        csv_path = self.out / "AUTHORITY" / "causal_authority.csv"
+        json_path = self.out / "AUTHORITY" / "causal_authority.json"
+        frame = pd.read_csv(csv_path)
+        frame.loc[frame["source"] == "A", "guardrail_flag"] = "unexpected"
+        frame.to_csv(csv_path, index=False)
+        records = json.loads(json_path.read_text())
+        next(r for r in records["records"] if r["source"] == "A")["guardrail_flag"] = "unexpected"
+        json_path.write_text(json.dumps(records))
+        module.run(str(self.out))
+        df, records = self._read_outputs()
+        self.assertEqual(df.loc["A", "review_action"], "BLOCK_INTERVENTION")
+        self.assertEqual(records["A"]["review_action"], "BLOCK_INTERVENTION")
+        self.assertTrue(records["A"]["intervention_unsafe"])
+
+    def test_json_hard_risk_must_not_be_overridden_by_csv_soft_flag(self):
+        json_path = self.out / "AUTHORITY" / "causal_authority.json"
+        records = json.loads(json_path.read_text())
+        next(r for r in records["records"] if r["source"] == "A")["guardrail_flag"] = 1
+        json_path.write_text(json.dumps(records))
+        module.run(str(self.out))
+        df, records = self._read_outputs()
+        # The representations disagree about risk; do not silently promote
+        # the higher-risk JSON artifact to a review-only FLAG.
+        self.assertEqual(df.loc["A", "review_action"], "FLAG")
+        self.assertEqual(records["A"]["review_action"], "BLOCK_INTERVENTION")
+        self.assertTrue(records["A"]["intervention_unsafe"])
+
+
+
 if __name__ == "__main__":
     unittest.main()
